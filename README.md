@@ -11,6 +11,14 @@ This repo is intentionally structured so an LLM, frontend, or teammate process c
 - [LLM control boundary](docs/llm-control-boundary.md): how a planner should consume frames/telemetry and emit safe commands.
 - [Research index](docs/research-index.md): source notes from SDK docs, DJITelloPy docs/repo, and community/video-stream references.
 
+## Repo Layout
+
+- `src/breacheye/`: installable Python package, CLI, Tello harness, and Rafa stub pipeline.
+- `ai/`: Rafa-owned AI/ML track artifacts and future model assets or scripts.
+- `integration/`: Cooper-owned drone, state-machine, Palantir, and frontend integration work.
+- `shared/`: cross-track helpers and contract utilities when they need to be consumed outside the package.
+- `demo/`: mock data, fallback assets, and rehearsal material.
+
 ## Install
 
 ```bash

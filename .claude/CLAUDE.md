@@ -56,6 +56,7 @@ breacheye/
 ├── .claude/             — Claude Code config
 │   ├── CLAUDE.md        — This file
 │   └── settings.json    — Permissions
+├── src/breacheye/       — Installable Python package and CLI
 ├── ai/                  — Rafa's track (AI/ML pipeline)
 ├── integration/         — Cooper's track (drone, state machine, Palantir)
 ├── shared/              — Shared utilities (ZMQ helpers, contract types)

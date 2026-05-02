@@ -35,8 +35,10 @@ rafa = [
 breacheye = "breacheye.cli:main"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["breacheye*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
 testpaths = ["tests"]
