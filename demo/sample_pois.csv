@@ -1,0 +1,17 @@
+poiId,scanId,category,label,confidence,posX,posY,posZ,floor,threatLevel,createdAt
+T1-01-001,scan-demo-001,T1-01,Main Entry Door,0.92,1.1,1.5,0.0,0,CLEAR,2026-05-02T14:00:00Z
+T1-01-002,scan-demo-001,T1-01,Emergency Exit East,0.88,11.8,2.0,0.0,0,CLEAR,2026-05-02T14:00:05Z
+T1-02-001,scan-demo-001,T1-02,Hallway Fatal Funnel,0.85,4.2,1.5,0.0,0,WARM,2026-05-02T14:00:10Z
+T1-02-002,scan-demo-001,T1-02,Stairwell Fatal Funnel,0.79,5.9,1.8,0.0,0,CAUTION,2026-05-02T14:00:15Z
+T1-03-001,scan-demo-001,T1-03,Stairwell Ascent,0.91,6.1,2.0,1.5,1,CAUTION,2026-05-02T14:00:20Z
+T1-03-002,scan-demo-001,T1-03,Stairwell Landing,0.87,6.0,2.1,3.0,1,CLEAR,2026-05-02T14:00:25Z
+T2-02-001,scan-demo-001,T2-02,Overturned Furniture,0.73,9.4,2.5,0.0,0,WARM,2026-05-02T14:00:30Z
+T2-02-002,scan-demo-001,T2-02,Suspicious Package,0.68,3.2,1.2,0.0,0,HOT,2026-05-02T14:00:35Z
+T2-03-001,scan-demo-001,T2-03,Corridor Chokepoint,0.82,5.0,1.5,0.0,0,CAUTION,2026-05-02T14:00:40Z
+T2-03-002,scan-demo-001,T2-03,Doorway Bottleneck,0.77,7.9,1.5,0.0,0,CAUTION,2026-05-02T14:00:45Z
+T3-01-001,scan-demo-001,T3-01,Electrical Panel Room 1,0.89,2.8,2.8,0.0,0,INFO,2026-05-02T14:00:50Z
+T3-01-002,scan-demo-001,T3-01,HVAC Access Panel,0.71,10.3,0.8,0.0,0,INFO,2026-05-02T14:00:55Z
+T4-01-001,scan-demo-001,T4-01,Ceiling Collapse Zone,0.65,8.1,1.0,2.8,0,WARM,2026-05-02T14:01:00Z
+ROOM-001,scan-demo-001,ROOM,Office Room A,0.94,2.5,2.0,0.0,0,CLEAR,2026-05-02T14:01:05Z
+ROOM-002,scan-demo-001,ROOM,Storage Room B,0.90,10.0,2.0,0.0,0,CLEAR,2026-05-02T14:01:10Z
+ROOM-003,scan-demo-001,ROOM,Corridor Segment C,0.93,6.0,1.5,0.0,0,CLEAR,2026-05-02T14:01:15Z
