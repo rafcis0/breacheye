@@ -68,3 +68,17 @@ breacheye/
 Stretch goal. Timebox 3h. Cut if not working by H+8.
 Ontology objects: TacticalPoi, FlightDecision, MissionFlight.
 Workshop COP: 2D map + iframe 3D viewer + POI table + AIP chatbot.
+
+## Research Material
+
+Local research is in `research/` (gitignored). Start with `research/INDEX.md` for a full catalog with summaries and keywords for every file.
+
+### Quick Reference
+
+| Directory | Contents |
+|-----------|----------|
+| `research/palantir/` | 9 docs — AIP, Ontology, SDK, Agents, Workshop/Maps, CASK hardware, build walkthroughs |
+| `research/hackathon-info/` | 4 docs — rules/schedule, problem statements, partner resources, venue logistics |
+| `research/military/` | 4 docs — urban ops doctrine, tactical taxonomy/ATAK, competitive intel, DARPA programs |
+| `research/technology/` | 8 docs — SAM2, SfM/COLMAP, edge hardware, 3D viz, indoor flight, reconstruction, Apple Silicon |
+| `research/cross-domain/` | 6 docs — FPV, real estate/Matterport, SAR, construction, gaming/VR, robotics SLAM |
