@@ -5,3 +5,15 @@ research/
 __pycache__/
 .pytest_cache/
 *.py[cod]
+
+# Local model weights and demo captures
+models/
+weights/
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.mlpackage/
+*.mp4
+*.mov

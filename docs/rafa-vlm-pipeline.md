@@ -17,10 +17,10 @@ The process subscribes to Cooper's frame publisher and publishes validated perce
 | Channel | Port | Direction | Format |
 |---------|------|-----------|--------|
 | frames | 5555 | Cooper -> Rafa | msgpack `{frame_id, timestamp, jpeg_bytes}` |
-| detections | 5556 | Rafa -> Cooper | msgpack detection payload |
+| detections | 5556 | Rafa -> Cooper | JSON detection payload |
 | depth | 5557 | Rafa -> Cooper | msgpack depth payload |
-| navigation | 5558 | Rafa -> Cooper | msgpack navigation payload |
-| health | 5559 | Rafa -> Cooper | msgpack health payload |
+| navigation | 5558 | Rafa -> Cooper | JSON navigation payload |
+| health | 5559 | Rafa -> Cooper | JSON health payload |
 
 Payloads may include the optional frame metadata fields from `CONSTITUTION.md`, such as `width`, `height`, and `encoding`.
 
@@ -38,10 +38,10 @@ BGR numpy arrays are internal only. They are not the ZMQ wire format.
 
 Rafa validates every outgoing payload against Pydantic schemas before publishing.
 
-- Detections on `5556`: POI JSON-compatible structure from `CONSTITUTION.md`.
+- Detections on `5556`: POI JSON structure from `CONSTITUTION.md`.
 - Depth on `5557`: msgpack `{frame_id, timestamp, shape, dtype, unit, depth_bytes}` where `depth_bytes` is raw `float32`.
-- Navigation on `5558`: high-level action from the allowed action set. Cooper maps that action to drone commands.
-- Health on `5559`: pipeline status, model state, throughput, memory, and errors.
+- Navigation on `5558`: JSON high-level action from the allowed action set. Cooper maps that action to drone commands.
+- Health on `5559`: JSON pipeline status, model state, throughput, memory, and errors.
 
 ## Modes
 

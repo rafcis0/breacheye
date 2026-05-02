@@ -12,7 +12,7 @@ from breacheye.rafa.adapters import (
     StubDepthEstimator,
     StubDetector,
 )
-from breacheye.rafa.codec import encode_msgpack
+from breacheye.rafa.codec import encode_json, encode_msgpack
 from breacheye.rafa.jpeg import decode_jpeg_bgr
 from breacheye.rafa.models import (
     LazyDepthAnythingV2Estimator,
@@ -248,4 +248,7 @@ class RafaPipeline:
         socket = self._sockets.get(channel)
         if socket is None:
             raise RuntimeError(f"publisher {channel!r} is not started")
-        await socket.send(encode_msgpack(payload))
+        if channel in {"detections", "navigation", "health"}:
+            await socket.send(encode_json(payload))
+        else:
+            await socket.send(encode_msgpack(payload))

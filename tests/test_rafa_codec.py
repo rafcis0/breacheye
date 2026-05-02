@@ -1,13 +1,6 @@
 import numpy as np
 
-from breacheye.rafa.codec import (
-    decode_depth,
-    decode_detection,
-    decode_frame,
-    decode_health,
-    decode_navigation,
-    encode_msgpack,
-)
+from breacheye.rafa.codec import decode_depth, decode_detection, decode_frame, decode_health, decode_navigation, encode_json, encode_msgpack
 from breacheye.rafa.schemas import (
     BBox2D,
     DepthOutput,
@@ -21,7 +14,7 @@ from breacheye.rafa.schemas import (
 )
 
 
-def test_msgpack_round_trips_frame_detection_depth_nav_and_health() -> None:
+def test_contract_codecs_round_trip_frame_depth_msgpack_and_json_outputs() -> None:
     frame = FrameInput(frame_id=1, timestamp=1.25, jpeg_bytes=b"jpeg")
     detection = DetectionOutput(
         frame_id=1,
@@ -53,7 +46,7 @@ def test_msgpack_round_trips_frame_detection_depth_nav_and_health() -> None:
     )
 
     assert decode_frame(encode_msgpack(frame)) == frame
-    assert decode_detection(encode_msgpack(detection)) == detection
+    assert decode_detection(encode_json(detection)) == detection
     assert decode_depth(encode_msgpack(depth)) == depth
-    assert decode_navigation(encode_msgpack(navigation)) == navigation
-    assert decode_health(encode_msgpack(health)) == health
+    assert decode_navigation(encode_json(navigation)) == navigation
+    assert decode_health(encode_json(health)) == health
