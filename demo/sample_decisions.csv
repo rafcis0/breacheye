@@ -1,0 +1,16 @@
+decisionId,scanId,timestamp,fromState,toState,action,confidence,reasoning,batteryPercent
+d1a2b3c4,scan-demo-001,2026-05-02T14:00:00Z,exploring,exploring,move_forward,0.88,Open corridor ahead no obstacles detected,95
+d2b3c4d5,scan-demo-001,2026-05-02T14:00:04Z,exploring,exploring,rotate_right,0.82,Unmapped sector to starboard initiating sweep,92
+d3c4d5e6,scan-demo-001,2026-05-02T14:00:08Z,exploring,exploring,move_forward,0.85,Heading confirmed clear proceeding,90
+d4d5e6f7,scan-demo-001,2026-05-02T14:00:12Z,exploring,investigating_poi,hover,0.91,Suspicious object detected high confidence stopping to analyze,88
+d5e6f7a8,scan-demo-001,2026-05-02T14:00:17Z,investigating_poi,investigating_poi,hover,0.78,Maintaining position for secondary VLM confirmation,85
+d6f7a8b9,scan-demo-001,2026-05-02T14:00:21Z,investigating_poi,exploring,move_forward,0.84,POI logged resuming grid sweep,83
+d7a8b9c0,scan-demo-001,2026-05-02T14:00:25Z,exploring,exploring,move_right,0.80,Adjusting lateral position to cover unmapped corridor,80
+d8b9c0d1,scan-demo-001,2026-05-02T14:00:30Z,exploring,obstacle_avoidance,rotate_left,0.76,Wall detected at forward range initiating avoidance,76
+d9c0d1e2,scan-demo-001,2026-05-02T14:00:34Z,obstacle_avoidance,obstacle_avoidance,move_up,0.70,Obstacle at current altitude ascending to clear,72
+d0d1e2f3,scan-demo-001,2026-05-02T14:00:38Z,obstacle_avoidance,exploring,move_forward,0.83,Obstacle cleared resuming exploration,68
+d1e2f3a4,scan-demo-001,2026-05-02T14:00:43Z,exploring,exploring,move_forward,0.87,Final room sector coverage in progress,60
+d2f3a4b5,scan-demo-001,2026-05-02T14:00:48Z,exploring,returning,rotate_left,0.90,Coverage complete initiating return to origin,45
+d3a4b5c6,scan-demo-001,2026-05-02T14:00:52Z,returning,returning,move_back,0.92,Retracing outbound path low battery protocol active,35
+d4b5c6d7,scan-demo-001,2026-05-02T14:00:56Z,returning,low_battery,hover,0.95,Battery critical threshold reached holding for emergency landing,22
+d5c6d7e8,scan-demo-001,2026-05-02T14:01:00Z,low_battery,low_battery,land,0.97,Battery at 20 percent executing controlled landing,20
