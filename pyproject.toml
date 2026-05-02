@@ -39,6 +39,11 @@ models = [
     "accelerate>=1.0",
     "num2words>=0.5",
 ]
+palantir = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "pyzmq>=26.0",
+]
 
 [project.scripts]
 breacheye = "breacheye.cli:main"
