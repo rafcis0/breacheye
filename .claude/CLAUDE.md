@@ -31,6 +31,15 @@ Tello 720p -> Moondream (20ms) -> Depth (31ms) -> State Machine -> Qwen (keyfram
 - ZMQ pub/sub on localhost for all cross-track communication.
 - Commits: `type: description` (feat, fix, refactor, docs, test, chore)
 - No trailing whitespace.
+- Follow git protocol in `.claude/instructions/git-protocol.md`. Main is sacred.
+
+## Context Files
+
+| File | Purpose | When to Read |
+|------|---------|--------------|
+| `.claude/dev.md` | Environment, ports, mock data, test commands | Starting any dev task |
+| `.claude/instructions/palantir.md` | AIP integration: APIs, schema, Workshop | Working on C3 (Palantir) |
+| `.claude/instructions/git-protocol.md` | Branch strategy, commit rules, safety | Before any git operation |
 
 ## Hardware
 
