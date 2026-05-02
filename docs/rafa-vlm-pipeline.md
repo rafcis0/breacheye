@@ -53,11 +53,15 @@ Fallback behavior must preserve the output contracts. Navigation falls back to `
 
 Current executable real-model fallback:
 
+- Primary navigation VLM:
+  - `BREACHEYE_QWEN_MODEL=models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf`
+  - `BREACHEYE_QWEN_MMPROJ=models/qwen3-vl-2b/mmproj-F16.gguf`
+  - requires `llama-mtmd-cli` from `brew install llama.cpp`
 - `BREACHEYE_SMOLVLM_PATH=models/smolvlm2-500m`
 - `BREACHEYE_SMOLVLM_DEVICE=cpu`
 - `breacheye rafa --mode models`
 
-This uses SmolVLM2-500M for keyframe navigation decisions. It is slow on CPU and should not be used for every-frame control.
+Qwen3-VL-2B is the preferred keyframe navigation model. SmolVLM2-500M is a slower CPU fallback and should not be used for every-frame control.
 
 ## Model Readiness
 

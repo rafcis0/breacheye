@@ -70,7 +70,8 @@ python integration/frame_publisher.py --frames 30 --fps 5 --run-id "$BREACHEYE_R
 For model fallback verification:
 
 ```bash
-export BREACHEYE_SMOLVLM_PATH=models/smolvlm2-500m
+export BREACHEYE_QWEN_MODEL=models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf
+export BREACHEYE_QWEN_MMPROJ=models/qwen3-vl-2b/mmproj-F16.gguf
 export BREACHEYE_RUN_ID="model-$(date -u +%Y%m%dT%H%M%SZ)"
 breacheye rafa --mode models --run-id "$BREACHEYE_RUN_ID"
 python integration/frame_publisher.py --frames 5 --fps 1 --run-id "$BREACHEYE_RUN_ID"

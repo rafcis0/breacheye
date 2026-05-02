@@ -1,6 +1,6 @@
 # Rafa Model Options
 
-Current decision: use `unsloth/Qwen3-VL-2B-Instruct-GGUF` as the first real navigation VLM target, with `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` as the smallest practical fallback to test if latency is the blocker.
+Current decision: use `unsloth/Qwen3-VL-2B-Instruct-GGUF` as the first real navigation VLM target, with `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` as the smallest practical fallback if Qwen fails at runtime.
 
 Do not commit weights. Download them into ignored local paths such as `models/` or `weights/`, then point the pipeline at them with environment variables.
 
@@ -19,10 +19,10 @@ Do not commit weights. Download them into ignored local paths such as `models/` 
 Lock this sequence for Rafa's side:
 
 1. Keep `stub` as the demo-safe fallback.
-2. Wire a Qwen adapter against `unsloth/Qwen3-VL-2B-Instruct-GGUF`.
-3. Use `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` or `Qwen3-VL-2B-Instruct-Q4_K_S.gguf` first.
-4. Also download the matching `mmproj-F16.gguf` or `mmproj-BF16.gguf` projector if the runtime needs it.
-5. If latency is too high, test `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`.
+2. Use the Qwen adapter against `unsloth/Qwen3-VL-2B-Instruct-GGUF`.
+3. Use `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` first.
+4. Use the matching `mmproj-F16.gguf` projector.
+5. If Qwen fails at runtime, fall back to `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` on CPU.
 
 Expected local environment:
 

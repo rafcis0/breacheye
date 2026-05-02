@@ -37,7 +37,7 @@ python ai/model_benchmark.py \
 
 | Model | Download status | Benchmark status | Notes |
 |-------|-----------------|------------------|-------|
-| `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | Blocked until GGUF VLM runtime is installed | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. |
+| `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | GGUF OK through `llama-mtmd-cli` | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. Benchmark wall `3.12s`; llama internal total `2.27s`; model-mode ZMQ smoke emitted valid nav `hover`. |
 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Downloaded from `~/Downloads` plus HF configs into ignored `models/smolvlm2-500m/` | CPU OK; MPS failed | CPU load `4.29s`, first run `6.05s`, output `rotate_right`. Model-mode ZMQ smoke emitted valid nav `rotate_left`. MPS crashed with incompatible matmul shapes. |
 | `OpenGVLab/InternVL3-1B` | Pending | Pending | Small HF alternative; may need `trust_remote_code`. |
 | `unsloth/Qwen2.5-VL-3B-Instruct-unsloth-bnb-4bit` | Pending | Pending | bnb 4-bit may be less Mac-friendly. |
@@ -56,7 +56,9 @@ Use a model only if it can:
 
 Keep `stub` mode as the safest demo path. `SmolVLM2-500M` is now a slow CPU fallback candidate for keyframes, not every-frame control.
 
-The first real model target remains `unsloth/Qwen3-VL-2B-Instruct-GGUF`; it needs a GGUF multimodal runtime before execution. The first executable fallback is `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` through CPU Transformers.
+The first real model target is now executable: `unsloth/Qwen3-VL-2B-Instruct-GGUF` through Homebrew `llama.cpp` / `llama-mtmd-cli`.
+
+The fallback remains `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` through CPU Transformers.
 
 ## Smoke Results
 
@@ -75,6 +77,15 @@ SmolVLM model-mode cross-process:
 - received navigation action: `rotate_left`
 - logs created for both processes
 
+Qwen model-mode cross-process:
+
+- `BREACHEYE_QWEN_MODEL=models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf`
+- `BREACHEYE_QWEN_MMPROJ=models/qwen3-vl-2b/mmproj-F16.gguf`
+- `breacheye rafa --mode models`
+- continuous synthetic frames through `integration/frame_publisher.py`
+- received navigation action: `hover`
+- logs created for both processes
+
 ## Local Environment
 
 ```bash
@@ -91,4 +102,4 @@ If Hugging Face large-file downloads keep stalling:
 1. Retry from a stronger network with `HF_HUB_ENABLE_HF_TRANSFER=1` after installing `huggingface_hub[hf_transfer]`.
 2. Prefer single-file includes over full snapshots so ONNX artifacts are not pulled accidentally.
 3. Download `SmolVLM2-500M` first because it can be benchmarked through the installed Transformers runtime.
-4. Install a GGUF multimodal runtime before spending more time on Qwen GGUF benchmarking.
+4. GGUF multimodal runtime is installed with `brew install llama.cpp`; use `llama-mtmd-cli`.

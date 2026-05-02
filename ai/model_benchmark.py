@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import subprocess
 import statistics
 import time
 from dataclasses import asdict, dataclass
@@ -45,12 +46,11 @@ def main() -> None:
 
     image = args.image or _make_sample_image()
     if args.runtime == "gguf":
-        result = BenchmarkResult(
+        result = benchmark_gguf(
             model_id=args.model_id,
             model_path=args.model_path,
-            runtime=args.runtime,
-            status="blocked",
-            notes="GGUF VLM benchmark needs a llama.cpp multimodal runtime with projector support.",
+            image=image,
+            max_new_tokens=args.max_new_tokens,
         )
     else:
         result = benchmark_transformers(
@@ -139,6 +139,75 @@ def benchmark_transformers(
             status="failed",
             error=repr(exc),
         )
+
+
+def benchmark_gguf(model_id: str, model_path: str, image: Path, max_new_tokens: int) -> BenchmarkResult:
+    mmproj = Path(model_path).with_name("mmproj-F16.gguf")
+    if not mmproj.exists():
+        return BenchmarkResult(
+            model_id=model_id,
+            model_path=model_path,
+            runtime="gguf",
+            status="failed",
+            error=f"missing projector {mmproj}",
+        )
+    command = [
+        "llama-mtmd-cli",
+        "-m",
+        model_path,
+        "--mmproj",
+        str(mmproj),
+        "--image",
+        str(image),
+        "-p",
+        DEFAULT_PROMPT,
+        "-n",
+        str(max_new_tokens),
+        "--temp",
+        "0",
+        "--ctx-size",
+        "4096",
+    ]
+    started = time.perf_counter()
+    try:
+        completed = subprocess.run(command, text=True, capture_output=True, timeout=60)
+    except FileNotFoundError as exc:
+        return BenchmarkResult(
+            model_id=model_id,
+            model_path=model_path,
+            runtime="gguf",
+            status="blocked",
+            error=repr(exc),
+            notes="Install llama.cpp with llama-mtmd-cli.",
+        )
+    except subprocess.TimeoutExpired as exc:
+        return BenchmarkResult(
+            model_id=model_id,
+            model_path=model_path,
+            runtime="gguf",
+            status="failed",
+            error=repr(exc),
+        )
+    elapsed = time.perf_counter() - started
+    output = completed.stdout + "\n" + completed.stderr
+    if completed.returncode != 0:
+        return BenchmarkResult(
+            model_id=model_id,
+            model_path=model_path,
+            runtime="gguf",
+            status="failed",
+            first_run_s=elapsed,
+            error=output[-1000:],
+        )
+    return BenchmarkResult(
+        model_id=model_id,
+        model_path=model_path,
+        runtime="gguf",
+        status="ok",
+        first_run_s=elapsed,
+        avg_run_s=elapsed,
+        output_preview=output[-1000:],
+    )
 
 
 def _make_sample_image() -> Path:

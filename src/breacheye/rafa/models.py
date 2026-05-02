@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import tempfile
 import time
 from typing import Any
 
@@ -45,7 +47,19 @@ class LazyQwen3VLNavigator(NavigationAdapter):
     name = "qwen3_vl"
 
     def __init__(self) -> None:
-        raise ModelUnavailable("Qwen3-VL runtime and weights are not configured")
+        self.model_path = os.environ.get("BREACHEYE_QWEN_MODEL")
+        self.mmproj_path = os.environ.get("BREACHEYE_QWEN_MMPROJ")
+        self.binary = os.environ.get("BREACHEYE_LLAMA_MTMD", "llama-mtmd-cli")
+        if not self.model_path:
+            raise ModelUnavailable("BREACHEYE_QWEN_MODEL is not set")
+        if not self.mmproj_path:
+            raise ModelUnavailable("BREACHEYE_QWEN_MMPROJ is not set")
+        if not os.path.exists(self.model_path):
+            raise ModelUnavailable(f"Qwen model path does not exist: {self.model_path}")
+        if not os.path.exists(self.mmproj_path):
+            raise ModelUnavailable(f"Qwen mmproj path does not exist: {self.mmproj_path}")
+        if not _binary_available(self.binary):
+            raise ModelUnavailable(f"{self.binary} is not installed")
 
     async def decide(
         self,
@@ -54,7 +68,64 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         detections: DetectionOutput,
         depth: DepthOutput | None,
     ) -> NavigationOutput:
-        raise ModelUnavailable("Qwen3-VL navigator is unavailable")
+        import asyncio
+        import cv2
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as handle:
+            image_path = handle.name
+        try:
+            cv2.imwrite(image_path, frame)
+            result = await asyncio.to_thread(self._run_cli, image_path)
+        finally:
+            try:
+                os.unlink(image_path)
+            except FileNotFoundError:
+                pass
+        action = _extract_action(result)
+        return NavigationOutput(
+            frame_id=meta.frame_id,
+            timestamp=time.time(),
+            decision=NavigationDecision(
+                action=action,
+                params=_params_for_action(action),
+                confidence=0.7 if action != "hover" else 0.65,
+                reasoning=f"Qwen3-VL output: {result[-240:]}",
+                exploration_state="exploring",
+            ),
+        )
+
+    def _run_cli(self, image_path: str) -> str:
+        prompt = (
+            "You are controlling an indoor drone. Look at the image and return only compact JSON "
+            "with keys action, confidence, reasoning. Allowed action values: hover, move_forward, "
+            "rotate_left, rotate_right. If uncertain, choose hover."
+        )
+        completed = subprocess.run(
+            [
+                self.binary,
+                "-m",
+                self.model_path,
+                "--mmproj",
+                self.mmproj_path,
+                "--image",
+                image_path,
+                "-p",
+                prompt,
+                "-n",
+                "96",
+                "--temp",
+                "0",
+                "--ctx-size",
+                "4096",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=float(os.environ.get("BREACHEYE_QWEN_TIMEOUT_S", "20")),
+        )
+        output = completed.stdout + "\n" + completed.stderr
+        if completed.returncode != 0:
+            raise ModelUnavailable(f"Qwen3-VL runtime failed: {output[-1000:]}")
+        return output
 
 
 class SmolVLMNavigator(NavigationAdapter):
@@ -136,6 +207,12 @@ def _extract_action(text: str) -> str:
         if re.search(rf"\b{re.escape(action)}\b", text, flags=re.IGNORECASE):
             return action
     return "hover"
+
+
+def _binary_available(binary: str) -> bool:
+    from shutil import which
+
+    return which(binary) is not None
 
 
 def _params_for_action(action: str) -> dict[str, int]:
