@@ -69,11 +69,11 @@ As of the latest readiness check:
 
 - Qwen3-VL-2B GGUF and projector are present locally.
 - SmolVLM2-500M is present locally.
-- Moondream projector is present locally; text GGUF download is in progress.
-- FastVLM is not downloaded yet.
+- Moondream GGUF text model and projector are present locally, but the tested GGUF path is too slow for the inner loop.
+- FastVLM metadata is present locally; `model.safetensors` is still a partial download and must reach `1,517,793,184` bytes before benchmarking.
 - Depth Anything V2 Small is present locally in `models/depth-anything-v2-small-hf`.
 - Depth Pro repo is cloned under ignored `research/ml-depth-pro`; checkpoint download was intentionally stopped.
 - Ollama has `qwen3.6:35b-a3b-q4_K_M` and `gemma4:26b`.
 - No Ollama Qwen VL model found.
 
-That means model mode can only run through safe fallbacks until weights/deps are installed.
+That means the current locked local stack is Qwen server navigation plus Depth Anything depth. FastVLM is still a benchmark candidate, not a dependency for the demo path.

@@ -14,7 +14,8 @@ The repo is set up so Cooper and Rafa can work independently against frozen ZMQ 
 - Safe Tello harness: implemented in simulator mode and hardware-adapter mode.
 - Rafa pipeline: implemented as a separate ZMQ process with `stub`, `detector-only`, and `models` modes.
 - H+2 contract path: mock/live frame publisher can send JPEG msgpack frames on `5555`; Rafa publishes detections, depth, navigation, and health on `5556-5559`.
-- Real model adapters: placeholders exist, but model packages and weights are local-only and not committed.
+- Real model adapters: Qwen server navigation and Depth Anything V2 depth are wired for local weights. Model files stay ignored under `models/`.
+- Offline debug logs: every run writes JSONL events plus saved source frames; model depth outputs also save colorized PNGs for frame-by-frame inspection.
 
 ## Repo Layout
 
@@ -147,9 +148,10 @@ The inner-loop model boundary belongs in this repo; the weights do not.
 
 Preferred model stack from the workplan:
 
-- Detection: Moondream Photon.
-- Depth: Depth Anything V2.
-- Navigation reasoning: Qwen 3-VL.
+- Navigation reasoning: Qwen3-VL-2B GGUF through `llama-server` for the current demo path.
+- Depth: Depth Anything V2 Small through Transformers/MPS.
+- Fast VLM candidate: Apple FastVLM-0.5B is the next speed benchmark once the local checkpoint is complete.
+- Detection fallback/research: Moondream is available locally but currently too slow through the tested GGUF path.
 
 Check readiness:
 
@@ -165,9 +167,14 @@ breacheye rafa doctor --require-models
 
 Expected local weight environment variables:
 
-- `BREACHEYE_MOONDREAM_WEIGHTS`: local Moondream model path.
-- `BREACHEYE_DEPTH_ANYTHING_WEIGHTS`: local Depth Anything V2 model path.
-- `BREACHEYE_QWEN_MODEL`: local Qwen VL GGUF/model path, unless a Qwen VL model is available through Ollama.
+- `BREACHEYE_QWEN_MODEL`: local Qwen VL GGUF path.
+- `BREACHEYE_QWEN_MMPROJ`: local Qwen multimodal projector path.
+- `BREACHEYE_QWEN_SERVER_URL`: warm `llama-server` URL, preferred for model-mode demos.
+- `BREACHEYE_DEPTH_ANYTHING_PATH`: local Depth Anything V2 model directory.
+- `BREACHEYE_DEPTH_ANYTHING_DEVICE`: optional device override, usually `mps` on Apple Silicon.
+- `BREACHEYE_MOONDREAM_WEIGHTS`: optional local Moondream path for research fallback work.
+
+Depth artifacts are written under `logs/<run_id>/rafa/depth/frame-XXXXXXXX.png`, with matching JSONL `depth_image_saved` events. Source input frames are written under `logs/<run_id>/rafa/frames/`.
 
 Current fallback rule: if these are missing, `breacheye rafa --mode models` must publish degraded health and use safe stub/rule fallbacks rather than crashing the demo.
 
