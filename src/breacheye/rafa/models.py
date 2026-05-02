@@ -6,6 +6,9 @@ import subprocess
 import tempfile
 import time
 from typing import Any
+import base64
+import json
+import urllib.request
 
 from breacheye.rafa.adapters import DetectionAdapter, DepthAdapter, NavigationAdapter
 from breacheye.rafa.schemas import DepthOutput, DetectionOutput, FrameInput, NavigationDecision, NavigationOutput
@@ -50,6 +53,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         self.model_path = os.environ.get("BREACHEYE_QWEN_MODEL")
         self.mmproj_path = os.environ.get("BREACHEYE_QWEN_MMPROJ")
         self.binary = os.environ.get("BREACHEYE_LLAMA_MTMD", "llama-mtmd-cli")
+        self.server_url = os.environ.get("BREACHEYE_QWEN_SERVER_URL")
         if not self.model_path:
             raise ModelUnavailable("BREACHEYE_QWEN_MODEL is not set")
         if not self.mmproj_path:
@@ -58,7 +62,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
             raise ModelUnavailable(f"Qwen model path does not exist: {self.model_path}")
         if not os.path.exists(self.mmproj_path):
             raise ModelUnavailable(f"Qwen mmproj path does not exist: {self.mmproj_path}")
-        if not _binary_available(self.binary):
+        if not self.server_url and not _binary_available(self.binary):
             raise ModelUnavailable(f"{self.binary} is not installed")
 
     async def decide(
@@ -70,6 +74,21 @@ class LazyQwen3VLNavigator(NavigationAdapter):
     ) -> NavigationOutput:
         import asyncio
         import cv2
+
+        if self.server_url:
+            result = await asyncio.to_thread(self._run_server, frame)
+            action = _extract_action(result)
+            return NavigationOutput(
+                frame_id=meta.frame_id,
+                timestamp=time.time(),
+                decision=NavigationDecision(
+                    action=action,
+                    params=_params_for_action(action),
+                    confidence=0.72 if action != "hover" else 0.67,
+                    reasoning=f"Qwen3-VL server output: {result[-240:]}",
+                    exploration_state="exploring",
+                ),
+            )
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as handle:
             image_path = handle.name
@@ -126,6 +145,41 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         if completed.returncode != 0:
             raise ModelUnavailable(f"Qwen3-VL runtime failed: {output[-1000:]}")
         return output
+
+    def _run_server(self, frame: Any) -> str:
+        import cv2
+
+        ok, encoded = cv2.imencode(".jpg", frame)
+        if not ok:
+            raise ModelUnavailable("failed to encode frame for Qwen server")
+        image = base64.b64encode(encoded.tobytes()).decode("ascii")
+        prompt = (
+            "Return only compact JSON with keys action, confidence, reasoning. "
+            "Allowed action values: hover, move_forward, rotate_left, rotate_right. "
+            "If uncertain, choose hover."
+        )
+        payload = {
+            "model": "gpt-4-vision",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}},
+                    ],
+                }
+            ],
+            "temperature": 0,
+            "max_tokens": int(os.environ.get("BREACHEYE_QWEN_MAX_TOKENS", "64")),
+        }
+        request = urllib.request.Request(
+            self.server_url.rstrip("/") + "/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"content-type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=float(os.environ.get("BREACHEYE_QWEN_TIMEOUT_S", "20"))) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"]
 
 
 class SmolVLMNavigator(NavigationAdapter):

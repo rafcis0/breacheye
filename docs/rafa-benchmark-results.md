@@ -37,8 +37,10 @@ python ai/model_benchmark.py \
 
 | Model | Download status | Benchmark status | Notes |
 |-------|-----------------|------------------|-------|
-| `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | GGUF OK through `llama-mtmd-cli` | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. Benchmark wall `3.12s`; llama internal total `2.27s`; model-mode ZMQ smoke emitted valid nav `hover`. |
+| `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | GGUF OK through `llama-mtmd-cli`; faster through warm `llama-server` | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. CLI benchmark wall `3.12s`; llama internal total `2.27s`; warm server calls were `0.24-0.79s` on cached prompt/image and model-mode server smoke emitted valid nav `hover` in about `2.0s`. |
 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Downloaded from `~/Downloads` plus HF configs into ignored `models/smolvlm2-500m/` | CPU OK; MPS failed | CPU load `4.29s`, first run `6.05s`, output `rotate_right`. Model-mode ZMQ smoke emitted valid nav `rotate_left`. MPS crashed with incompatible matmul shapes. |
+| `moondream/moondream-2b-2025-04-14-4bit` | Projector downloaded; text GGUF still downloading | Pending | Use for detection, not navigation. Needs `moondream2-text-model-f16.gguf` plus `moondream2-mmproj-f16.gguf`. |
+| `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Not downloaded | Pending | Best speed experiment for Apple Silicon. HF checkpoint is about 1.53 GB; Apple's repo also provides Apple Silicon export/runtime paths. |
 | `OpenGVLab/InternVL3-1B` | Pending | Pending | Small HF alternative; may need `trust_remote_code`. |
 | `unsloth/Qwen2.5-VL-3B-Instruct-unsloth-bnb-4bit` | Pending | Pending | bnb 4-bit may be less Mac-friendly. |
 | `unsloth/Qwen3-VL-4B-Instruct-GGUF` | Pending | Blocked until GGUF VLM runtime is installed | Capability fallback if 2B fails quality. |
@@ -86,6 +88,46 @@ Qwen model-mode cross-process:
 - received navigation action: `hover`
 - logs created for both processes
 
+Qwen server mode:
+
+```bash
+llama-server \
+  -m models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf \
+  --mmproj models/qwen3-vl-2b/mmproj-F16.gguf \
+  --host 127.0.0.1 --port 56262 \
+  --ctx-size 4096 -ngl 99
+
+export BREACHEYE_QWEN_SERVER_URL=http://127.0.0.1:56262
+export BREACHEYE_QWEN_MAX_TOKENS=32
+breacheye rafa --mode models
+```
+
+This keeps Qwen loaded on Metal and avoids per-keyframe process/model startup.
+
+Moondream detection benchmark, once the text GGUF finishes downloading:
+
+```bash
+llama-mtmd-cli \
+  -m models/moondream-gguf/moondream2-text-model-f16.gguf \
+  --mmproj models/moondream-gguf/moondream2-mmproj-f16.gguf \
+  --image demo/generated/sample-indoor-frame.jpg \
+  -p "Detect tactical objects or hazards in this indoor frame. Return compact JSON." \
+  -n 96 --temp 0
+```
+
+FastVLM first benchmark:
+
+```bash
+hf download apple/FastVLM-0.5B --local-dir models/fastvlm-0.5b
+git clone https://github.com/apple/ml-fastvlm research/ml-fastvlm
+cd research/ml-fastvlm
+python -m pip install -e .
+python predict.py \
+  --model-path ../../models/fastvlm-0.5b \
+  --image-file ../../demo/generated/sample-indoor-frame.jpg \
+  --prompt "Return only compact JSON with keys action, confidence, reasoning. Allowed actions: hover, move_forward, rotate_left, rotate_right."
+```
+
 ## Local Environment
 
 ```bash
@@ -101,5 +143,5 @@ If Hugging Face large-file downloads keep stalling:
 
 1. Retry from a stronger network with `HF_HUB_ENABLE_HF_TRANSFER=1` after installing `huggingface_hub[hf_transfer]`.
 2. Prefer single-file includes over full snapshots so ONNX artifacts are not pulled accidentally.
-3. Download `SmolVLM2-500M` first because it can be benchmarked through the installed Transformers runtime.
-4. GGUF multimodal runtime is installed with `brew install llama.cpp`; use `llama-mtmd-cli`.
+3. Download `FastVLM-0.5B` next because it is the strongest speed candidate for this Mac path.
+4. Keep Qwen server mode as the live demo path until FastVLM proves faster end-to-end.

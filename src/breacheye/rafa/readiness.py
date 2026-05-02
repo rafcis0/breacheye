@@ -103,6 +103,7 @@ def _check_optional_existing_path(env_var: str, repo_root: Path) -> CheckResult:
 
 
 def _check_qwen_vl(repo_root: Path) -> CheckResult:
+    server_url = os.environ.get("BREACHEYE_QWEN_SERVER_URL")
     env_path = os.environ.get("BREACHEYE_QWEN_MODEL")
     if env_path:
         path = Path(env_path).expanduser()
@@ -115,7 +116,10 @@ def _check_qwen_vl(repo_root: Path) -> CheckResult:
                 projector = repo_root / projector
             if not projector.exists():
                 return CheckResult("qwen3_vl", False, f"BREACHEYE_QWEN_MMPROJ points to missing path {projector}")
-            return CheckResult("qwen3_vl", True, f"BREACHEYE_QWEN_MODEL={path}; BREACHEYE_QWEN_MMPROJ={projector}")
+            detail = f"BREACHEYE_QWEN_MODEL={path}; BREACHEYE_QWEN_MMPROJ={projector}"
+            if server_url:
+                detail += f"; BREACHEYE_QWEN_SERVER_URL={server_url}"
+            return CheckResult("qwen3_vl", True, detail)
         if path.exists():
             return CheckResult("qwen3_vl", True, f"BREACHEYE_QWEN_MODEL={path}")
         return CheckResult("qwen3_vl", False, f"BREACHEYE_QWEN_MODEL points to missing path {path}")

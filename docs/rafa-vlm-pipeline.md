@@ -57,6 +57,7 @@ Current executable real-model fallback:
   - `BREACHEYE_QWEN_MODEL=models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf`
   - `BREACHEYE_QWEN_MMPROJ=models/qwen3-vl-2b/mmproj-F16.gguf`
   - requires `llama-mtmd-cli` from `brew install llama.cpp`
+  - preferred speed path: run `llama-server` and set `BREACHEYE_QWEN_SERVER_URL`
 - `BREACHEYE_SMOLVLM_PATH=models/smolvlm2-500m`
 - `BREACHEYE_SMOLVLM_DEVICE=cpu`
 - `breacheye rafa --mode models`
