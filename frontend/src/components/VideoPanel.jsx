@@ -1,17 +1,35 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 
-const MJPEG_URL = 'http://localhost:8000/video.mjpeg'
+const MJPEG_URL = '/api/video.mjpeg'
 
 export default function VideoPanel() {
   const [hasSignal, setHasSignal] = useState(true)
+  const retryRef = useRef(null)
+
+  const clearRetry = useCallback(() => {
+    if (retryRef.current !== null) {
+      clearInterval(retryRef.current)
+      retryRef.current = null
+    }
+  }, [])
 
   const handleError = useCallback(() => {
     setHasSignal(false)
+    if (retryRef.current === null) {
+      retryRef.current = setInterval(() => {
+        setHasSignal(true)
+      }, 3000)
+    }
   }, [])
 
   const handleLoad = useCallback(() => {
     setHasSignal(true)
-  }, [])
+    clearRetry()
+  }, [clearRetry])
+
+  useEffect(() => {
+    return () => clearRetry()
+  }, [clearRetry])
 
   return (
     <div className="video-panel">

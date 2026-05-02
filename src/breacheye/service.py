@@ -72,6 +72,7 @@ def create_app(mode: str = "sim") -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Hackathon: wide-open CORS for dev convenience. Lock down for production.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
