@@ -151,6 +151,26 @@ Preferred model stack from the workplan:
 - Depth: Depth Anything V2.
 - Navigation reasoning: Qwen 3-VL.
 
+Check readiness:
+
+```bash
+breacheye rafa doctor
+```
+
+Require the real model stack before starting model-mode work:
+
+```bash
+breacheye rafa doctor --require-models
+```
+
+Expected local weight environment variables:
+
+- `BREACHEYE_MOONDREAM_WEIGHTS`: local Moondream model path.
+- `BREACHEYE_DEPTH_ANYTHING_WEIGHTS`: local Depth Anything V2 model path.
+- `BREACHEYE_QWEN_MODEL`: local Qwen VL GGUF/model path, unless a Qwen VL model is available through Ollama.
+
+Current fallback rule: if these are missing, `breacheye rafa --mode models` must publish degraded health and use safe stub/rule fallbacks rather than crashing the demo.
+
 ## Tests
 
 ```bash

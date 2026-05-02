@@ -50,3 +50,20 @@ Rafa validates every outgoing payload against Pydantic schemas before publishing
 - `models`: attempts lazy model placeholders for detection, depth, and navigation. Missing imports or weights are reported on health and replaced with safe fallbacks.
 
 Fallback behavior must preserve the output contracts. Navigation falls back to `hover` or conservative rule-based actions when model output is unavailable or invalid.
+
+## Model Readiness
+
+Model weights are local runtime artifacts and are not committed. Check the current machine with:
+
+```bash
+breacheye rafa doctor
+breacheye rafa doctor --require-models
+```
+
+The real model path environment variables are:
+
+- `BREACHEYE_MOONDREAM_WEIGHTS`
+- `BREACHEYE_DEPTH_ANYTHING_WEIGHTS`
+- `BREACHEYE_QWEN_MODEL`
+
+`--require-models` exits non-zero until model packages and local weights are available. `stub` mode remains the required demo fallback.

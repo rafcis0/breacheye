@@ -23,7 +23,14 @@ def main() -> None:
     smoke.add_argument("--mode", choices=["sim", "tello"], default="sim")
 
     rafa = subparsers.add_parser("rafa", help="Run Rafa's local ZMQ VLM pipeline.")
+    rafa.add_argument("rafa_command", nargs="?", choices=["run", "doctor"], default="run")
     rafa.add_argument("--mode", choices=["stub", "models", "detector-only"], default="stub")
+    rafa.add_argument("--json", action="store_true", help="Print doctor output as JSON.")
+    rafa.add_argument(
+        "--require-models",
+        action="store_true",
+        help="Exit non-zero from doctor unless real model dependencies and weights are ready.",
+    )
 
     args = parser.parse_args()
     if args.command == "serve":
@@ -32,7 +39,10 @@ def main() -> None:
     elif args.command == "smoke":
         asyncio.run(_smoke(args.mode))
     elif args.command == "rafa":
-        asyncio.run(_rafa(args.mode))
+        if args.rafa_command == "doctor":
+            _rafa_doctor(json_output=args.json, require_models=args.require_models)
+        else:
+            asyncio.run(_rafa(args.mode))
 
 
 async def _smoke(mode: str) -> None:
@@ -61,6 +71,15 @@ async def _rafa(mode: str) -> None:
 
     pipeline = RafaPipeline(RafaPipelineConfig(mode=mode))
     await pipeline.run_forever()
+
+
+def _rafa_doctor(json_output: bool = False, require_models: bool = False) -> None:
+    from breacheye.rafa.readiness import check_rafa_readiness
+
+    readiness = check_rafa_readiness()
+    print(readiness.to_json() if json_output else readiness.to_text())
+    if not readiness.stub_ready or (require_models and not readiness.models_ready):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
