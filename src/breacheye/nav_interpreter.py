@@ -20,6 +20,8 @@ class NavInterpreter:
         self._socket = None
         self._client = None  # httpx.AsyncClient
         self._poller = None
+        self._consecutive_failures: int = 0
+        self._battery_threshold: int = 15
 
     def start(self) -> None:
         import zmq
@@ -67,27 +69,47 @@ class NavInterpreter:
         except zmq.Again:
             return False
 
+        # Step 1: Decode
         try:
             nav = decode_navigation(data)
-            logger.info(
-                "recv frame=%d action=%s confidence=%.2f",
-                nav.frame_id,
-                nav.decision.action,
-                nav.decision.confidence,
+        except Exception:
+            self._consecutive_failures += 1
+            logger.warning(
+                "malformed frame failures=%d raw=%.200s",
+                self._consecutive_failures, repr(data[:200]),
             )
+            await self._handle_failure()
+            return False
 
+        logger.info(
+            "recv frame=%d action=%s confidence=%.2f",
+            nav.frame_id, nav.decision.action, nav.decision.confidence,
+        )
+
+        # Step 2: Confidence check
+        if nav.decision.confidence < 0.5:
+            self._consecutive_failures += 1
+            logger.warning(
+                "low_confidence frame=%d confidence=%.2f reasoning=%s failures=%d",
+                nav.frame_id, nav.decision.confidence,
+                nav.decision.reasoning, self._consecutive_failures,
+            )
+            await self._handle_failure()
+            return False
+
+        # Step 3: Map and execute
+        try:
             cmd = self._map_action(nav.decision)
             await self._post_command(cmd)
+            self._consecutive_failures = 0  # Reset on success
             return True
         except Exception:
-            logger.exception("failed to process nav message")
+            self._consecutive_failures += 1
+            logger.exception("map_error failures=%d", self._consecutive_failures)
+            await self._handle_failure()
             return False
 
     def _map_action(self, decision: NavigationDecision) -> DroneCommand:
-        if decision.confidence < 0.5:
-            logger.info("low confidence=%.2f, overriding to hover", decision.confidence)
-            return DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter")
-
         action = decision.action
 
         if action == "hover":
@@ -138,6 +160,38 @@ class NavInterpreter:
         )
         logger.info("send type=%s cmd_id=%s", cmd.type, cmd.command_id)
         return cmd
+
+    async def _handle_failure(self) -> None:
+        try:
+            if self._consecutive_failures >= 3:
+                battery = await self._get_battery()
+                if battery is not None and battery <= self._battery_threshold:
+                    logger.warning(
+                        "escalation: %d consecutive failures, battery=%d%%, landing",
+                        self._consecutive_failures, battery,
+                    )
+                    cmd = DroneCommand(type=CommandType.LAND, issued_by="nav_interpreter")
+                else:
+                    logger.warning(
+                        "escalation: %d consecutive failures, holding hover (battery=%s%%)",
+                        self._consecutive_failures, battery,
+                    )
+                    cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter")
+            else:
+                cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter")
+            await self._post_command(cmd)
+        except Exception:
+            logger.exception("handle_failure itself failed, failures=%d", self._consecutive_failures)
+
+    async def _get_battery(self) -> int | None:
+        try:
+            health_url = self.command_url.rsplit("/", 1)[0] + "/health"
+            resp = await self._client.get(health_url)
+            if resp.status_code == 200:
+                return resp.json().get("telemetry", {}).get("battery")
+        except Exception:
+            logger.warning("failed to fetch battery level")
+        return None
 
     async def _post_command(self, cmd: DroneCommand) -> None:
         assert self._client is not None, "call start() before _post_command()"
