@@ -56,6 +56,32 @@ Every map event should also be written into the same run-scoped JSONL logs as fr
 - POI detections
 - emitted map events
 
+## Current First Pass
+
+Rafa writes both human and numeric depth artifacts:
+
+```text
+logs/<run_id>/rafa/depth/frame-XXXXXXXX.png
+logs/<run_id>/rafa/depth_raw/frame-XXXXXXXX.npy
+```
+
+The PNG is for quick inspection. The `.npy` file is the relative `float32` depth array used by post-run mapping.
+
+Create a first-pass relative point cloud from a run:
+
+```bash
+python ai/depth_log_map.py --run-id "$BREACHEYE_RUN_ID" --log-dir logs --stride 12 --max-frames 20
+```
+
+Outputs:
+
+```text
+logs/<run_id>/map/relative-depth-point-cloud.ply
+logs/<run_id>/map/relative-depth-summary.json
+```
+
+This is not metric reconstruction. It stacks relative monocular depth slices into a rough point cloud so we can see whether the depth stream is stable enough to justify heavier SLAM/SfM work.
+
 ## Better Later
 
 - Camera calibration for Tello intrinsics.

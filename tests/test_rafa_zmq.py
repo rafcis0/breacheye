@@ -80,6 +80,7 @@ async def test_in_process_zmq_stub_pipeline_publishes_all_outputs(tmp_path) -> N
         assert health.pipeline_status in {"ready", "degraded"}
         assert (tmp_path / "zmq-test" / "rafa" / "frames" / "frame-00000003.jpg").exists()
         assert (tmp_path / "zmq-test" / "rafa" / "depth" / "frame-00000003.png").exists()
+        assert (tmp_path / "zmq-test" / "rafa" / "depth_raw" / "frame-00000003.npy").exists()
     finally:
         await pipeline.stop()
         input_pub.close(linger=0)

@@ -12,6 +12,7 @@ logs/<run_id>-frame_publisher.jsonl
 logs/<run_id>-subscriber_<channel>_<port>.jsonl
 logs/<run_id>/<component>/frames/frame-00000000.jpg
 logs/<run_id>/rafa/depth/frame-00000000.png
+logs/<run_id>/rafa/depth_raw/frame-00000000.npy
 ```
 
 Set a shared run id before a hardware test:
@@ -46,6 +47,7 @@ Rafa pipeline:
 - frame receive timeouts
 - frame ids, JPEG byte sizes, and saved received-frame image paths
 - depth visualization PNG paths for each depth output
+- raw `float32` depth `.npy` paths for post-run mapping
 - decode failures
 - detection/depth/navigation fallbacks
 - every publish event with frame id, action, counts, and health summary
@@ -70,6 +72,14 @@ Offline preflight:
 - relevant local processes
 - disk free space
 - current artifact counts
+
+Post-run map artifact:
+
+```bash
+python ai/depth_log_map.py --run-id "$BREACHEYE_RUN_ID" --log-dir logs
+```
+
+This writes `logs/<run_id>/map/relative-depth-point-cloud.ply` and `logs/<run_id>/map/relative-depth-summary.json` from saved `depth_raw` arrays.
 
 ## Hardware Run Checklist
 

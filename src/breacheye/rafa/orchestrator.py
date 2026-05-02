@@ -309,10 +309,23 @@ class RafaPipeline:
 
     def _log_depth_artifact(self, depth: DepthOutput) -> None:
         try:
+            import io
+
             import cv2
             import numpy as np
 
             values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+            raw_buffer = io.BytesIO()
+            np.save(raw_buffer, values.astype(np.float32, copy=False))
+            raw_path = self.logger.save_bytes("depth_raw", f"frame-{depth.frame_id:08d}.npy", raw_buffer.getvalue())
+            self.logger.event(
+                "depth_array_saved",
+                frame_id=depth.frame_id,
+                array_path=raw_path,
+                width=int(depth.shape[1]),
+                height=int(depth.shape[0]),
+                dtype="float32",
+            )
             finite = np.isfinite(values)
             if finite.any():
                 near = float(np.nanpercentile(values[finite], 2))
