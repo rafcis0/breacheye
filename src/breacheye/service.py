@@ -5,6 +5,7 @@ import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
 from breacheye.adapters.base import DroneAdapter
@@ -69,6 +70,13 @@ def create_app(mode: str = "sim") -> FastAPI:
             "intentionally not exposed to callers or future LLM agents."
         ),
         lifespan=lifespan,
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     @app.get("/health")
