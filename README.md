@@ -150,7 +150,7 @@ Preferred model stack from the workplan:
 
 - Navigation reasoning: Qwen3-VL-2B GGUF through `llama-server` for the current demo path.
 - Depth: Depth Anything V2 Small through Transformers/MPS.
-- Fast VLM candidate: Apple FastVLM-0.5B is the next speed benchmark once the local checkpoint is complete.
+- Fast VLM candidate: Apple FastVLM-0.5B is downloaded and runnable locally, but it is not promoted to navigator until strict JSON output is solved.
 - Detection fallback/research: Moondream is available locally but currently too slow through the tested GGUF path.
 
 Check readiness:

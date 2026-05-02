@@ -9,7 +9,7 @@ Do not commit weights. Download them into ignored local paths such as `models/` 
 | Rank | Model | Source | Why it matters | Tradeoff |
 |------|-------|--------|----------------|----------|
 | 1 | `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Unsloth / HF | Current working model. Real Qwen VL family, Apache-2.0, GGUF quantization, small enough for local testing. Q4 model is about 1.0 GB plus projector. | Good keyframe latency, but still not every-frame control. |
-| 2 | `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Apple / HF | Best speed experiment. Apple reports the smallest variant has much faster TTFT than comparable small VLMs and provides Apple Silicon export/runtime paths. HF has a 1.53 GB 0.5B checkpoint. | Needs separate setup/export path and model license review before demo use. |
+| 2 | `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Apple / HF | Best speed experiment. Apple reports the smallest variant has much faster TTFT than comparable small VLMs and provides Apple Silicon export/runtime paths. HF has a 1.53 GB 0.5B checkpoint, now downloaded locally. | Runnable through Apple's PyTorch path, but current prompts did not produce reliable strict navigation JSON. Needs wrapper/export work before demo use. |
 | 3 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Hugging Face | Smallest fallback that already runs locally through Transformers CPU. | ~6s CPU inference in our benchmark; MPS crashed on attention shape. |
 | 4 | `OpenGVLab/InternVL3-1B` | Hugging Face | Very small multimodal model, Apache/MIT-compatible components, explicit spatial/GUI/multimodal capabilities. | Uses custom code/trust-remote-code path and may be less convenient on Apple Silicon. |
 | 5 | `unsloth/Qwen2.5-VL-3B-Instruct-unsloth-bnb-4bit` | Unsloth / HF | Older but proven Qwen VL family. The card includes agent/mobile-control benchmark data, close to our navigation-decision use case. | More parameters than Qwen3-VL-2B; bnb 4-bit is less Mac-friendly than GGUF. |
@@ -23,7 +23,7 @@ Lock this sequence for Rafa's side:
 3. Use `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` first.
 4. Use the matching `mmproj-F16.gguf` projector.
 5. Keep Qwen loaded with `llama-server` for warm keyframe calls.
-6. Benchmark FastVLM-0.5B as the likely fastest Apple Silicon VLM option.
+6. Keep FastVLM-0.5B as the likely fastest Apple Silicon VLM option, but do not promote it to navigator until output enforcement is solved.
 7. Use `depth-anything/Depth-Anything-V2-Small-hf` for the real depth estimator.
 8. If Qwen/FastVLM fail at runtime, fall back to `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` on CPU.
 
@@ -59,6 +59,13 @@ python predict.py \
 
 Do this in `research/` and `models/`; both should stay ignored. If the PyTorch path is too slow or unstable, use Apple's export path from `model_export/` instead of trying to force it through the existing Qwen GGUF adapter.
 
+Current local FastVLM benchmark status:
+
+- `models/fastvlm-0.5b/model.safetensors` is complete at `1,517,793,184` bytes.
+- Use ignored symlink `models/llava-fastvlm-0.5b -> models/fastvlm-0.5b` for Apple's `predict.py`; otherwise its loader treats the checkpoint as text-only and skips the vision tower.
+- PyTorch/MPS runs completed, but output was not reliably strict JSON: one allowed action with incomplete JSON, one valid JSON with an invalid enum value, and one raw `rotate_left` answer.
+- Keep Qwen server mode as the current real navigator.
+
 ## Depth Note
 
 Depth Anything V2 Small is the depth path for now. It benchmarked at about `0.041s` per frame on MPS on the sample frame, which is fast enough for the inner loop. Depth Pro is still interesting for metric depth later, but its checkpoint is large and not needed for this demo path.
@@ -70,7 +77,7 @@ As of the latest readiness check:
 - Qwen3-VL-2B GGUF and projector are present locally.
 - SmolVLM2-500M is present locally.
 - Moondream GGUF text model and projector are present locally, but the tested GGUF path is too slow for the inner loop.
-- FastVLM metadata is present locally; `model.safetensors` is still a partial download and must reach `1,517,793,184` bytes before benchmarking.
+- FastVLM is present locally and runnable through `research/.fastvlm-py311-venv`, but not yet reliable enough for strict navigation JSON.
 - Depth Anything V2 Small is present locally in `models/depth-anything-v2-small-hf`.
 - Depth Pro repo is cloned under ignored `research/ml-depth-pro`; checkpoint download was intentionally stopped.
 - Ollama has `qwen3.6:35b-a3b-q4_K_M` and `gemma4:26b`.

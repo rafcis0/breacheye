@@ -41,7 +41,7 @@ python ai/model_benchmark.py \
 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Downloaded from `~/Downloads` plus HF configs into ignored `models/smolvlm2-500m/` | CPU OK; MPS failed | CPU load `4.29s`, first run `6.05s`, output `rotate_right`. Model-mode ZMQ smoke emitted valid nav `rotate_left`. MPS crashed with incompatible matmul shapes. |
 | `moondream/moondream-2b-2025-04-14-4bit` | Downloaded | GGUF CPU OK but slow; Metal assertion | Use only as a fallback/research detector. CPU total was `13.94s`; output was not strict JSON. |
 | `depth-anything/Depth-Anything-V2-Small-hf` | Downloaded into ignored `models/depth-anything-v2-small-hf/` | MPS OK | Mean `0.0406s`, about `24.6 FPS`, output shape `1x518x686`. Keep this for depth. |
-| `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Partial; safetensors still needed | Pending | Best speed experiment for Apple Silicon. HF checkpoint is about 1.53 GB; Apple's repo also provides Apple Silicon export/runtime paths. |
+| `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Downloaded into ignored `models/fastvlm-0.5b/` | MPS runnable; not structured enough yet | Checkpoint is `1,517,793,184` bytes. Cold `predict.py` runs were `19.94s`, `8.34s`, and `5.25s` depending on prompt. Outputs were not reliable strict navigation JSON yet, so keep Qwen server mode as the live navigator. |
 | `apple/ml-depth-pro` | Repo cloned; checkpoint intentionally stopped | Deferred | Interesting for metric depth later, but Depth Anything is already fast enough. |
 | `OpenGVLab/InternVL3-1B` | Pending | Pending | Small HF alternative; may need `trust_remote_code`. |
 | `unsloth/Qwen2.5-VL-3B-Instruct-unsloth-bnb-4bit` | Pending | Pending | bnb 4-bit may be less Mac-friendly. |
@@ -137,6 +137,17 @@ python predict.py \
   --prompt "Return only compact JSON with keys action, confidence, reasoning. Allowed actions: hover, move_forward, rotate_left, rotate_right."
 ```
 
+Observed result on 2026-05-02:
+
+- `model.safetensors` is fully downloaded at `1,517,793,184` bytes.
+- Dependencies were installed in isolated Python 3.11 venv `research/.fastvlm-py311-venv`.
+- The Apple loader only initialized the vision tower when the path name included `llava`, so local ignored symlink `models/llava-fastvlm-0.5b -> models/fastvlm-0.5b` was used.
+- Prompt 1 returned an allowed action (`move_forward`) but incomplete JSON in `19.94s`.
+- Prompt 2 returned valid JSON in `8.34s` but copied the enum string instead of choosing an allowed action.
+- Prompt 3 returned just `rotate_left` in `5.25s`, not JSON.
+
+Conclusion: FastVLM is now local and runnable, but it needs a wrapper/export path and stricter output enforcement before replacing Qwen for navigation.
+
 Depth Anything V2 Small benchmark:
 
 ```bash
@@ -166,5 +177,5 @@ If Hugging Face large-file downloads keep stalling:
 
 1. Retry from a stronger network with `HF_HUB_ENABLE_HF_TRANSFER=1` after installing `huggingface_hub[hf_transfer]`.
 2. Prefer single-file includes over full snapshots so ONNX artifacts are not pulled accidentally.
-3. Download `FastVLM-0.5B` next because it is the strongest speed candidate for this Mac path.
-4. Keep Qwen server mode as the live demo path until FastVLM proves faster end-to-end.
+3. Keep Qwen server mode as the live demo path until FastVLM proves reliable strict JSON.
+4. Revisit FastVLM through Apple's export/MLX path or a constrained post-processor if we need lower VLM latency.

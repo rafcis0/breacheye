@@ -1,0 +1,37 @@
+{
+  "benchmark_date": "2026-05-02",
+  "model": "apple/FastVLM-0.5B",
+  "runtime": "apple/ml-fastvlm predict.py",
+  "model_path": "models/llava-fastvlm-0.5b",
+  "checkpoint_bytes": 1517793184,
+  "device": "mps",
+  "python": "research/.fastvlm-py311-venv/bin/python",
+  "image": "demo/generated/sample-indoor-frame.jpg",
+  "results": [
+    {
+      "prompt": "Return only compact JSON with keys action, confidence, reasoning. Allowed actions: hover, move_forward, rotate_left, rotate_right.",
+      "wall_s": 19.94,
+      "output": "{ \"action\": \"move_forward\", \"confidence\": 0.8, \"reasoning\": \"The image shows a mock indoor corridor with a small brown rectangle on the left side and a larger brown rectangle on the right side. The corridor is not fully visible, but the rectangles are clearly distinguishable. The action 'move_forward' is likely to move the corridor to the right side of the image, which is consistent with the position of the rectangles.\"",
+      "valid_json": false,
+      "allowed_action": true
+    },
+    {
+      "prompt": "Return only valid minified JSON. Schema: {\"action\":\"hover|move_forward|rotate_left|rotate_right\",\"confidence\":0.0,\"reasoning\":\"short\"}. No markdown.",
+      "wall_s": 8.34,
+      "output": "{ \"action\":\"hover|move_forward|rotate_left|rotate_right\", \"confidence\":0.0, \"reasoning\":\"short\" }",
+      "valid_json": true,
+      "allowed_action": false
+    },
+    {
+      "prompt": "Look at the indoor drone frame. Choose exactly one action from: hover, move_forward, rotate_left, rotate_right. Return only valid minified JSON like {\"action\":\"hover\",\"confidence\":0.7,\"reasoning\":\"short\"}.",
+      "wall_s": 5.25,
+      "output": "rotate_left",
+      "valid_json": false,
+      "allowed_action": true
+    }
+  ],
+  "notes": [
+    "The Apple research loader only initialized the vision tower when the model path contained 'llava', so the local ignored symlink models/llava-fastvlm-0.5b points at models/fastvlm-0.5b.",
+    "FastVLM is runnable locally but not yet a reliable structured-navigation adapter. Keep Qwen server mode as the current model-mode navigator until a wrapper or export path enforces JSON."
+  ]
+}
