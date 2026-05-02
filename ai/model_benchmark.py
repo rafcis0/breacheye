@@ -39,6 +39,7 @@ def main() -> None:
     parser.add_argument("--image", type=Path)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--max-new-tokens", type=int, default=96)
+    parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -58,6 +59,7 @@ def main() -> None:
             image=image,
             runs=args.runs,
             max_new_tokens=args.max_new_tokens,
+            device_name=args.device,
         )
     payload = {"system": _system_info(), "result": asdict(result)}
     text = json.dumps(payload, indent=2)
@@ -73,6 +75,7 @@ def benchmark_transformers(
     image: Path,
     runs: int,
     max_new_tokens: int,
+    device_name: str,
 ) -> BenchmarkResult:
     started = time.perf_counter()
     try:
@@ -80,12 +83,12 @@ def benchmark_transformers(
         from PIL import Image
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
-        device = _torch_device(torch)
+        device = _torch_device(torch, device_name)
         dtype = torch.float16 if device == "mps" else torch.float32
         processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
         model = AutoModelForImageTextToText.from_pretrained(
             model_path,
-            torch_dtype=dtype,
+            dtype=dtype,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
         )
@@ -154,7 +157,9 @@ def _make_sample_image() -> Path:
     return path
 
 
-def _torch_device(torch_module: Any) -> str:
+def _torch_device(torch_module: Any, requested: str) -> str:
+    if requested != "auto":
+        return requested
     if getattr(torch_module.backends, "mps", None) and torch_module.backends.mps.is_available():
         return "mps"
     if torch_module.cuda.is_available():

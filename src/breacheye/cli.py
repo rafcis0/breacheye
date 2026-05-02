@@ -26,6 +26,8 @@ def main() -> None:
     rafa.add_argument("rafa_command", nargs="?", choices=["run", "doctor"], default="run")
     rafa.add_argument("--mode", choices=["stub", "models", "detector-only"], default="stub")
     rafa.add_argument("--json", action="store_true", help="Print doctor output as JSON.")
+    rafa.add_argument("--log-dir", default="logs", help="Directory for JSONL run logs.")
+    rafa.add_argument("--run-id", help="Stable run id used in log file names.")
     rafa.add_argument(
         "--require-models",
         action="store_true",
@@ -42,7 +44,7 @@ def main() -> None:
         if args.rafa_command == "doctor":
             _rafa_doctor(json_output=args.json, require_models=args.require_models)
         else:
-            asyncio.run(_rafa(args.mode))
+            asyncio.run(_rafa(args.mode, log_dir=args.log_dir, run_id=args.run_id))
 
 
 async def _smoke(mode: str) -> None:
@@ -66,10 +68,10 @@ async def _smoke(mode: str) -> None:
         await runtime.stop()
 
 
-async def _rafa(mode: str) -> None:
+async def _rafa(mode: str, log_dir: str | None = "logs", run_id: str | None = None) -> None:
     from breacheye.rafa import RafaPipeline, RafaPipelineConfig
 
-    pipeline = RafaPipeline(RafaPipelineConfig(mode=mode))
+    pipeline = RafaPipeline(RafaPipelineConfig(mode=mode, log_dir=log_dir, run_id=run_id))
     await pipeline.run_forever()
 
 

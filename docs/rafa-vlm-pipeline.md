@@ -51,6 +51,14 @@ Rafa validates every outgoing payload against Pydantic schemas before publishing
 
 Fallback behavior must preserve the output contracts. Navigation falls back to `hover` or conservative rule-based actions when model output is unavailable or invalid.
 
+Current executable real-model fallback:
+
+- `BREACHEYE_SMOLVLM_PATH=models/smolvlm2-500m`
+- `BREACHEYE_SMOLVLM_DEVICE=cpu`
+- `breacheye rafa --mode models`
+
+This uses SmolVLM2-500M for keyframe navigation decisions. It is slow on CPU and should not be used for every-frame control.
+
 ## Model Readiness
 
 Model weights are local runtime artifacts and are not committed. Check the current machine with:
@@ -66,6 +74,7 @@ The real model path environment variables are:
 - `BREACHEYE_DEPTH_ANYTHING_WEIGHTS`
 - `BREACHEYE_QWEN_MODEL`
 - `BREACHEYE_QWEN_MMPROJ` when using a GGUF vision projector
+- `BREACHEYE_SMOLVLM_PATH` for the slow CPU Transformers fallback
 
 `--require-models` exits non-zero until model packages and local weights are available. `stub` mode remains the required demo fallback.
 

@@ -21,3 +21,8 @@ weights/
 *.mlpackage/
 *.mp4
 *.mov
+
+# Runtime logs and local benchmark artifacts
+logs/
+demo/benchmarks/
+demo/generated/

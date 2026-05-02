@@ -29,6 +29,14 @@ rafa = [
     "msgpack>=1.0",
     "numpy>=1.26",
     "opencv-python>=4.9",
+    "num2words>=0.5",
+]
+models = [
+    "pillow>=10",
+    "torch>=2.6",
+    "transformers>=4.57",
+    "accelerate>=1.0",
+    "num2words>=0.5",
 ]
 
 [project.scripts]

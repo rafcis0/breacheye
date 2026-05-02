@@ -4,6 +4,7 @@ import argparse
 import json
 
 from breacheye.rafa.codec import decode_depth, decode_frame
+from breacheye.runlog import RunLogger
 
 
 def main() -> None:
@@ -16,7 +17,10 @@ def main() -> None:
         default="raw",
     )
     parser.add_argument("--count", type=int, default=1)
+    parser.add_argument("--log-dir", default="logs")
+    parser.add_argument("--run-id")
     args = parser.parse_args()
+    logger = RunLogger(f"subscriber_{args.channel}_{args.port}", log_dir=args.log_dir, run_id=args.run_id)
 
     import zmq
 
@@ -24,11 +28,15 @@ def main() -> None:
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.SUBSCRIBE, b"")
     socket.connect(f"tcp://{args.host}:{args.port}")
+    logger.event("subscriber_start", host=args.host, port=args.port, channel=args.channel, count=args.count)
     try:
         for _ in range(args.count):
             data = socket.recv()
-            print(decode_payload(args.channel, data))
+            decoded = decode_payload(args.channel, data)
+            logger.event("message_received", bytes=len(data), decoded=decoded)
+            print(decoded)
     finally:
+        logger.event("subscriber_stop")
         socket.close(linger=0)
 
 

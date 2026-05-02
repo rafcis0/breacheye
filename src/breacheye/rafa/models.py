@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
+import re
+import time
 from typing import Any
 
 from breacheye.rafa.adapters import DetectionAdapter, DepthAdapter, NavigationAdapter
-from breacheye.rafa.schemas import DepthOutput, DetectionOutput, FrameInput, NavigationOutput
+from breacheye.rafa.schemas import DepthOutput, DetectionOutput, FrameInput, NavigationDecision, NavigationOutput
 
 
 class ModelUnavailable(RuntimeError):
@@ -52,3 +55,99 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         depth: DepthOutput | None,
     ) -> NavigationOutput:
         raise ModelUnavailable("Qwen3-VL navigator is unavailable")
+
+
+class SmolVLMNavigator(NavigationAdapter):
+    name = "smolvlm2-500m"
+
+    def __init__(self, model_path: str | None = None, device: str | None = None) -> None:
+        self.model_path = model_path or os.environ.get("BREACHEYE_SMOLVLM_PATH")
+        if not self.model_path:
+            raise ModelUnavailable("BREACHEYE_SMOLVLM_PATH is not set")
+        try:
+            import torch
+            from transformers import AutoModelForImageTextToText, AutoProcessor
+        except ImportError as exc:
+            raise ModelUnavailable("transformers and torch are required for SmolVLM") from exc
+        self.torch = torch
+        self.device = device or os.environ.get("BREACHEYE_SMOLVLM_DEVICE", "cpu")
+        self.processor = AutoProcessor.from_pretrained(self.model_path, trust_remote_code=True)
+        self.model = AutoModelForImageTextToText.from_pretrained(
+            self.model_path,
+            dtype=torch.float32,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+        )
+        self.model.to(self.device)
+        self.model.eval()
+
+    async def decide(
+        self,
+        frame: Any,
+        meta: FrameInput,
+        detections: DetectionOutput,
+        depth: DepthOutput | None,
+    ) -> NavigationOutput:
+        from PIL import Image
+
+        image = Image.fromarray(_bgr_to_rgb(frame))
+        prompt = (
+            "You are controlling an indoor drone. Return only compact JSON with keys "
+            "action, confidence, reasoning. Allowed actions: hover, move_forward, "
+            "rotate_left, rotate_right. If uncertain, choose hover."
+        )
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+        inputs = self.processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
+        with self.torch.inference_mode():
+            generated = self.model.generate(**inputs, do_sample=False, max_new_tokens=64)
+        text = self.processor.batch_decode(generated, skip_special_tokens=True)[0]
+        action = _extract_action(text)
+        return NavigationOutput(
+            frame_id=meta.frame_id,
+            timestamp=time.time(),
+            decision=NavigationDecision(
+                action=action,
+                params=_params_for_action(action),
+                confidence=0.55 if action != "hover" else 0.5,
+                reasoning=f"SmolVLM output: {text[-240:]}",
+                exploration_state="exploring",
+            ),
+        )
+
+
+def _extract_action(text: str) -> str:
+    allowed = {"hover", "move_forward", "rotate_left", "rotate_right"}
+    for action in allowed:
+        if re.search(rf"\b{re.escape(action)}\b", text, flags=re.IGNORECASE):
+            return action
+    return "hover"
+
+
+def _params_for_action(action: str) -> dict[str, int]:
+    if action == "move_forward":
+        return {"distance_cm": 30, "speed_cm_s": 20}
+    if action in {"rotate_left", "rotate_right"}:
+        return {"degrees": 20}
+    return {"duration_ms": 500}
+
+
+def _bgr_to_rgb(frame: Any) -> Any:
+    try:
+        return frame[:, :, ::-1]
+    except Exception:
+        return frame

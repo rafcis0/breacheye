@@ -6,6 +6,7 @@ from time import monotonic, time
 
 from pydantic import ValidationError
 
+from breacheye.runlog import RunLogger, summarize_payload
 from breacheye.rafa.adapters import (
     HoverNavigator,
     SafeRuleNavigator,
@@ -19,6 +20,7 @@ from breacheye.rafa.models import (
     LazyMoondreamDetector,
     LazyQwen3VLNavigator,
     ModelUnavailable,
+    SmolVLMNavigator,
 )
 from breacheye.rafa.receiver import ZmqFrameReceiver
 from breacheye.rafa.schemas import (
@@ -44,6 +46,8 @@ class RafaPipelineConfig:
     health_interval_s: float = 1.0
     recv_timeout_s: float = 0.5
     bind_publishers: bool = True
+    log_dir: str | None = "logs"
+    run_id: str | None = None
     errors: list[str] = field(default_factory=list)
 
 
@@ -58,6 +62,7 @@ class RafaPipeline:
         self._started_at = monotonic()
         self._last_health_at = 0.0
         self.errors = list(self.config.errors)
+        self.logger = RunLogger("rafa", log_dir=self.config.log_dir, run_id=self.config.run_id)
         self.detector = StubDetector()
         self.depth_estimator = StubDepthEstimator()
         self.navigator = SafeRuleNavigator()
@@ -68,7 +73,9 @@ class RafaPipeline:
         }
 
     def configure_adapters(self) -> None:
+        self.logger.event("configure_adapters_start", mode=self.config.mode)
         if self.config.mode == "stub":
+            self.logger.event("configure_adapters_done", models={key: value.model_dump() for key, value in self.model_status.items()})
             return
         if self.config.mode not in {"models", "detector-only"}:
             raise ValueError(f"unsupported Rafa mode {self.config.mode!r}")
@@ -78,6 +85,7 @@ class RafaPipeline:
             self.model_status["moondream"] = ModelStatus(status="ready", active=self.detector.name)
         except ModelUnavailable as exc:
             self.errors.append(str(exc))
+            self.logger.event("model_fallback", model="moondream", error=str(exc), fallback="stub-detector")
             self.detector = StubDetector()
             self.model_status["moondream"] = ModelStatus(
                 status="fallback",
@@ -90,6 +98,7 @@ class RafaPipeline:
             self.navigator = SafeRuleNavigator()
             self.model_status["depth_anything_v2"] = ModelStatus(status="stub", active=self.depth_estimator.name)
             self.model_status["qwen3_vl"] = ModelStatus(status="stub", active=self.navigator.name)
+            self.logger.event("configure_adapters_done", models={key: value.model_dump() for key, value in self.model_status.items()})
             return
 
         try:
@@ -97,6 +106,7 @@ class RafaPipeline:
             self.model_status["depth_anything_v2"] = ModelStatus(status="ready", active=self.depth_estimator.name)
         except ModelUnavailable as exc:
             self.errors.append(str(exc))
+            self.logger.event("model_fallback", model="depth_anything_v2", error=str(exc), fallback="stub-depth")
             self.depth_estimator = StubDepthEstimator()
             self.model_status["depth_anything_v2"] = ModelStatus(
                 status="fallback",
@@ -109,18 +119,43 @@ class RafaPipeline:
             self.model_status["qwen3_vl"] = ModelStatus(status="ready", active=self.navigator.name)
         except ModelUnavailable as exc:
             self.errors.append(str(exc))
-            self.navigator = SafeRuleNavigator()
-            self.model_status["qwen3_vl"] = ModelStatus(
-                status="fallback",
-                active=self.navigator.name,
-                error=str(exc),
-            )
+            try:
+                self.navigator = SmolVLMNavigator()
+                self.model_status["qwen3_vl"] = ModelStatus(
+                    status="fallback",
+                    active=self.navigator.name,
+                    error=f"{exc}; using SmolVLM fallback",
+                )
+                self.logger.event("model_fallback", model="qwen3_vl", error=str(exc), fallback="smolvlm2-500m")
+            except ModelUnavailable as fallback_exc:
+                self.logger.event(
+                    "model_fallback",
+                    model="qwen3_vl",
+                    error=f"{exc}; {fallback_exc}",
+                    fallback="safe-rule-navigator",
+                )
+                self.navigator = SafeRuleNavigator()
+                self.model_status["qwen3_vl"] = ModelStatus(
+                    status="fallback",
+                    active=self.navigator.name,
+                    error=str(exc),
+                )
+        self.logger.event("configure_adapters_done", models={key: value.model_dump() for key, value in self.model_status.items()})
 
     async def start(self) -> None:
         import zmq
         import zmq.asyncio
 
         self.configure_adapters()
+        self.logger.event(
+            "pipeline_start",
+            mode=self.config.mode,
+            frame_port=self.config.frame_port,
+            detection_port=self.config.detection_port,
+            depth_port=self.config.depth_port,
+            navigation_port=self.config.navigation_port,
+            health_port=self.config.health_port,
+        )
         self._context = zmq.asyncio.Context.instance()
         self._receiver = ZmqFrameReceiver(f"tcp://{self.config.host}:{self.config.frame_port}", self._context)
         self._receiver.start()
@@ -143,6 +178,7 @@ class RafaPipeline:
 
     async def stop(self) -> None:
         self._running = False
+        self.logger.event("pipeline_stop")
         if self._receiver is not None:
             self._receiver.close()
         for socket in self._sockets.values():
@@ -164,11 +200,14 @@ class RafaPipeline:
         try:
             frame_meta = await self._receiver.recv(timeout_s=self.config.recv_timeout_s)
         except asyncio.TimeoutError:
+            self.logger.event("frame_recv_timeout", timeout_s=self.config.recv_timeout_s)
             return False
+        self.logger.event("frame_received", frame_id=frame_meta.frame_id, jpeg_bytes=len(frame_meta.jpeg_bytes), width=frame_meta.width, height=frame_meta.height)
         try:
             frame = decode_jpeg_bgr(frame_meta.jpeg_bytes)
         except Exception as exc:
             self.errors.append(f"frame {frame_meta.frame_id}: {exc}")
+            self.logger.event("frame_decode_failed", frame_id=frame_meta.frame_id, error=str(exc))
             await self.publish_health()
             return False
 
@@ -182,7 +221,8 @@ class RafaPipeline:
         return True
 
     async def publish_health(self) -> None:
-        await self._publish("health", self.health())
+        health = self.health()
+        await self._publish("health", health)
         self._last_health_at = monotonic()
 
     def health(self) -> HealthOutput:
@@ -209,6 +249,7 @@ class RafaPipeline:
             return validated
         except Exception as exc:
             self.errors.append(f"detection fallback on frame {frame_meta.frame_id}: {exc}")
+            self.logger.event("detection_fallback", frame_id=frame_meta.frame_id, error=str(exc))
             fallback = await StubDetector().detect(frame, frame_meta)
             self._frames["detection"] += 1
             return fallback
@@ -221,6 +262,7 @@ class RafaPipeline:
             return validated
         except Exception as exc:
             self.errors.append(f"depth unavailable on frame {frame_meta.frame_id}: {exc}")
+            self.logger.event("depth_fallback", frame_id=frame_meta.frame_id, error=str(exc))
             try:
                 fallback = await StubDepthEstimator().estimate(frame, frame_meta)
                 self._frames["depth"] += 1
@@ -236,6 +278,7 @@ class RafaPipeline:
             return validated
         except (ValidationError, Exception) as exc:
             self.errors.append(f"navigation fallback on frame {frame_meta.frame_id}: {exc}")
+            self.logger.event("navigation_fallback", frame_id=frame_meta.frame_id, error=str(exc))
             fallback = await HoverNavigator().decide(frame, frame_meta, detection, depth)
             self._frames["decision"] += 1
             return fallback
@@ -248,6 +291,7 @@ class RafaPipeline:
         socket = self._sockets.get(channel)
         if socket is None:
             raise RuntimeError(f"publisher {channel!r} is not started")
+        self.logger.event("publish", channel=channel, summary=summarize_payload(payload))
         if channel in {"detections", "navigation", "health"}:
             await socket.send(encode_json(payload))
         else:

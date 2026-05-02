@@ -10,6 +10,7 @@ def test_readiness_reports_stub_and_model_state(monkeypatch, tmp_path: Path) -> 
     monkeypatch.delenv("BREACHEYE_DEPTH_ANYTHING_WEIGHTS", raising=False)
     monkeypatch.delenv("BREACHEYE_QWEN_MODEL", raising=False)
     monkeypatch.delenv("BREACHEYE_QWEN_MMPROJ", raising=False)
+    monkeypatch.delenv("BREACHEYE_SMOLVLM_PATH", raising=False)
 
     readiness = check_rafa_readiness(tmp_path)
 
@@ -23,12 +24,15 @@ def test_readiness_accepts_existing_weight_paths(monkeypatch, tmp_path: Path) ->
     moondream = tmp_path / "moondream"
     depth = tmp_path / "depth"
     qwen = tmp_path / "qwen.gguf"
+    smol = tmp_path / "smol"
     moondream.mkdir()
     depth.mkdir()
+    smol.mkdir()
     qwen.write_bytes(b"placeholder")
     monkeypatch.setenv("BREACHEYE_MOONDREAM_WEIGHTS", str(moondream))
     monkeypatch.setenv("BREACHEYE_DEPTH_ANYTHING_WEIGHTS", str(depth))
     monkeypatch.setenv("BREACHEYE_QWEN_MODEL", str(qwen))
+    monkeypatch.setenv("BREACHEYE_SMOLVLM_PATH", str(smol))
 
     readiness = check_rafa_readiness(tmp_path)
 
@@ -36,10 +40,11 @@ def test_readiness_accepts_existing_weight_paths(monkeypatch, tmp_path: Path) ->
         check.name: check.ready
         for check in readiness.model_checks
         if check.name
-        in {"BREACHEYE_MOONDREAM_WEIGHTS", "BREACHEYE_DEPTH_ANYTHING_WEIGHTS", "qwen3_vl"}
+        in {"BREACHEYE_MOONDREAM_WEIGHTS", "BREACHEYE_DEPTH_ANYTHING_WEIGHTS", "qwen3_vl", "BREACHEYE_SMOLVLM_PATH"}
     }
     assert path_checks == {
         "BREACHEYE_MOONDREAM_WEIGHTS": True,
         "BREACHEYE_DEPTH_ANYTHING_WEIGHTS": True,
         "qwen3_vl": True,
+        "BREACHEYE_SMOLVLM_PATH": True,
     }

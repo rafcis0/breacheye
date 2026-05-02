@@ -8,6 +8,7 @@ from typing import Iterable
 
 from breacheye.rafa.codec import encode_msgpack
 from breacheye.rafa.schemas import FrameInput
+from breacheye.runlog import RunLogger
 from breacheye.video import encode_jpeg
 
 
@@ -20,9 +21,11 @@ def main() -> None:
     parser.add_argument("--mock-images", type=Path, help="Directory of image files to loop over.")
     parser.add_argument("--mock-video", type=Path, help="Video file to loop over.")
     parser.add_argument("--tello", action="store_true", help="Read live frames from djitellopy.Tello.")
+    parser.add_argument("--log-dir", default="logs")
+    parser.add_argument("--run-id")
     args = parser.parse_args()
 
-    publisher = FramePublisher(host=args.host, port=args.port, fps=args.fps)
+    publisher = FramePublisher(host=args.host, port=args.port, fps=args.fps, log_dir=args.log_dir, run_id=args.run_id)
     if args.tello:
         frames = tello_frames()
     elif args.mock_video:
@@ -35,9 +38,10 @@ def main() -> None:
 
 
 class FramePublisher:
-    def __init__(self, host: str = "127.0.0.1", port: int = 5555, fps: float = 5.0) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 5555, fps: float = 5.0, log_dir: str | None = "logs", run_id: str | None = None) -> None:
         self.endpoint = f"tcp://{host}:{port}"
         self.interval_s = 1.0 / fps if fps > 0 else 0.0
+        self.logger = RunLogger("frame_publisher", log_dir=log_dir, run_id=run_id)
 
     def publish(self, frames: Iterable, limit: int | None = None) -> None:
         import zmq
@@ -45,6 +49,7 @@ class FramePublisher:
         context = zmq.Context.instance()
         socket = context.socket(zmq.PUB)
         socket.bind(self.endpoint)
+        self.logger.event("publisher_start", endpoint=self.endpoint, interval_s=self.interval_s, limit=limit)
         time.sleep(0.2)
         try:
             for frame_id, frame in enumerate(frames):
@@ -53,10 +58,12 @@ class FramePublisher:
                 height, width = frame.shape[:2]
                 payload = frame_payload(frame_id, frame, width=width, height=height)
                 socket.send(payload)
+                self.logger.event("frame_published", frame_id=frame_id, width=width, height=height, payload_bytes=len(payload))
                 print(f"published frame_id={frame_id} size={width}x{height}")
                 if self.interval_s:
                     time.sleep(self.interval_s)
         finally:
+            self.logger.event("publisher_stop")
             socket.close(linger=0)
 
 
