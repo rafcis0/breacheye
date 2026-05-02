@@ -219,3 +219,26 @@ async def test_handle_failure_lands_on_low_battery() -> None:
     await interp._handle_failure()
     assert len(posted_commands) == 1
     assert posted_commands[0].type == CommandType.LAND
+
+
+@pytest.mark.asyncio
+async def test_handle_failure_hovers_when_battery_unknown() -> None:
+    """At 3+ failures with battery unreachable, hovers (safe default)."""
+    interp = NavInterpreter()
+    interp._consecutive_failures = 3
+
+    posted_commands = []
+
+    async def mock_post(cmd):
+        posted_commands.append(cmd)
+
+    interp._post_command = mock_post
+
+    async def mock_battery():
+        return None
+
+    interp._get_battery = mock_battery
+
+    await interp._handle_failure()
+    assert len(posted_commands) == 1
+    assert posted_commands[0].type == CommandType.HOVER
