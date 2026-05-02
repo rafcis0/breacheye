@@ -26,6 +26,7 @@ const THREAT_COLORS = {
   WARM:    '#f97316',
   CAUTION: '#eab308',
   CLEAR:   '#22c55e',
+  INFO:    '#94a3b8',
 }
 
 const DEFAULT_COLOR = '#94a3b8'
@@ -44,15 +45,19 @@ function hexToRgb(hex) {
 // to its offset parent to place the canvas correctly.
 export default function DetectionOverlay({ containerRef }) {
   const canvasRef = useRef(null)
+  const ctxRef = useRef(null)
   const detectionsRef = useRef([])
   const rafRef = useRef(null)
   const wsRef = useRef(null)
+  const backoffRef = useRef(1000)
+  const reconnectRef = useRef(null)
 
   const drawFrame = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const ctx = canvas.getContext('2d')
+    const ctx = ctxRef.current
+    if (!ctx) return
     const now = Date.now()
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -150,6 +155,8 @@ export default function DetectionOverlay({ containerRef }) {
     const frameEl = containerRef?.current
     if (!canvas || !frameEl) return
 
+    ctxRef.current = canvas.getContext('2d')
+
     function syncToFrame() {
       const frameRect = frameEl.getBoundingClientRect()
       const parentRect = canvas.offsetParent?.getBoundingClientRect() ?? frameRect
@@ -171,11 +178,14 @@ export default function DetectionOverlay({ containerRef }) {
   // WebSocket subscription
   useEffect(() => {
     let ws
-    let reconnectTimer
 
     function connect() {
       ws = new WebSocket(WS_URL)
       wsRef.current = ws
+
+      ws.onopen = () => {
+        backoffRef.current = 1000
+      }
 
       ws.onmessage = (event) => {
         try {
@@ -203,18 +213,17 @@ export default function DetectionOverlay({ containerRef }) {
       }
 
       ws.onclose = () => {
-        reconnectTimer = setTimeout(connect, 2000)
+        reconnectRef.current = setTimeout(connect, backoffRef.current)
+        backoffRef.current = Math.min(backoffRef.current * 2, 30000)
       }
 
-      ws.onerror = () => {
-        ws.close()
-      }
+      ws.onerror = () => {}
     }
 
     connect()
 
     return () => {
-      clearTimeout(reconnectTimer)
+      clearTimeout(reconnectRef.current)
       if (wsRef.current) {
         wsRef.current.onclose = null
         wsRef.current.close()

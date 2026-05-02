@@ -65,19 +65,25 @@ class HarnessRuntime:
 
     async def _zmq_reader(self) -> None:
         assert self._zmq_socket is not None
-        try:
-            while True:
-                raw = await self._zmq_socket.recv()
-                try:
-                    payload = json.loads(raw)
-                except json.JSONDecodeError as exc:
-                    log.debug("ZMQ: bad JSON from detections channel: %s", exc)
-                    continue
-                await self.bus.publish("drone.detections", payload)
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            log.warning("ZMQ reader exited unexpectedly: %s", exc)
+        backoff = 1.0
+        max_backoff = 30.0
+        while True:
+            try:
+                while True:
+                    raw = await self._zmq_socket.recv()
+                    try:
+                        payload = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        log.debug("ZMQ: bad JSON from detections channel: %s", exc)
+                        continue
+                    await self.bus.publish("drone.detections", payload)
+                    backoff = 1.0
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                log.warning("ZMQ reader failed: %s — retrying in %.0fs", exc, backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
 
     def _cleanup_zmq(self) -> None:
         if self._zmq_socket is not None:
