@@ -250,6 +250,93 @@
   letter-spacing: 0.06em;
 }
 
+/* ── Telemetry HUD ───────────────────────────────────────── */
+
+.telemetry-hud {
+  flex: 1;
+  min-height: 120px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.telemetry-hud__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.telemetry-hud__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #60a5fa;
+}
+
+.telemetry-hud__ws {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+.telemetry-hud__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0;
+}
+
+.telemetry-hud__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+}
+
+.telemetry-hud__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #60a5fa;
+  opacity: 0.7;
+}
+
+.telemetry-hud__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.telemetry-hud__status-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.telemetry-hud__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.telemetry-hud__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 14px;
+}
+
 /* ── Responsive: 1920×1080 primary target ───────────────── */
 
 @media (min-width: 1600px) {

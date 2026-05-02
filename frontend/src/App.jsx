@@ -1,5 +1,6 @@
 import VideoPanel from './components/VideoPanel'
 import PlaceholderCard from './components/PlaceholderCard'
+import TelemetryHUD from './components/TelemetryHUD'
 import './App.css'
 
 export default function App() {
@@ -21,7 +22,7 @@ export default function App() {
         </section>
 
         <aside className="app__sidebar">
-          <PlaceholderCard label="TELEMETRY HUD" ticket="22" />
+          <TelemetryHUD />
           <PlaceholderCard label="DETECTION OVERLAY" ticket="23" />
           <PlaceholderCard label="TACTICAL MAP" ticket="25" />
         </aside>
