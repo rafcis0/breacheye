@@ -30,6 +30,11 @@ rafa = [
     "numpy>=1.26",
     "opencv-python>=4.9",
 ]
+palantir = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "pyzmq>=26.0",
+]
 
 [project.scripts]
 breacheye = "breacheye.cli:main"
