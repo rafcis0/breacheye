@@ -17,7 +17,7 @@ from breacheye.video import encode_jpeg
 
 
 @pytest.mark.asyncio
-async def test_in_process_zmq_stub_pipeline_publishes_all_outputs() -> None:
+async def test_in_process_zmq_stub_pipeline_publishes_all_outputs(tmp_path) -> None:
     import zmq
     import zmq.asyncio
 
@@ -49,6 +49,8 @@ async def test_in_process_zmq_stub_pipeline_publishes_all_outputs() -> None:
             navigation_port=navigation_port,
             health_port=health_port,
             health_interval_s=0.0,
+            log_dir=str(tmp_path),
+            run_id="zmq-test",
         )
     )
     await pipeline.start()
@@ -76,6 +78,8 @@ async def test_in_process_zmq_stub_pipeline_publishes_all_outputs() -> None:
         assert depth.frame_id == 3
         assert navigation.decision.action in ALLOWED_NAVIGATION_ACTIONS
         assert health.pipeline_status in {"ready", "degraded"}
+        assert (tmp_path / "zmq-test" / "rafa" / "frames" / "frame-00000003.jpg").exists()
+        assert (tmp_path / "zmq-test" / "rafa" / "depth" / "frame-00000003.png").exists()
     finally:
         await pipeline.stop()
         input_pub.close(linger=0)

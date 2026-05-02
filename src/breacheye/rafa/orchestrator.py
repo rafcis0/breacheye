@@ -221,6 +221,8 @@ class RafaPipeline:
 
         detection = await self._safe_detect(frame, frame_meta)
         depth = await self._safe_depth(frame, frame_meta)
+        if depth is not None:
+            self._log_depth_artifact(depth)
         navigation = await self._safe_navigation(frame, frame_meta, detection, depth)
         await self._publish("detections", detection)
         if depth is not None:
@@ -304,3 +306,33 @@ class RafaPipeline:
             await socket.send(encode_json(payload))
         else:
             await socket.send(encode_msgpack(payload))
+
+    def _log_depth_artifact(self, depth: DepthOutput) -> None:
+        try:
+            import cv2
+            import numpy as np
+
+            values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+            finite = np.isfinite(values)
+            if finite.any():
+                near = float(np.nanpercentile(values[finite], 2))
+                far = float(np.nanpercentile(values[finite], 98))
+                denom = max(far - near, 1e-6)
+                visual = np.clip((values - near) / denom, 0.0, 1.0)
+            else:
+                visual = np.zeros(depth.shape, dtype=np.float32)
+            grayscale = (visual * 255).astype(np.uint8)
+            color = cv2.applyColorMap(grayscale, cv2.COLORMAP_TURBO)
+            ok, encoded = cv2.imencode(".png", color)
+            if not ok:
+                raise ValueError("cv2.imencode returned false")
+            path = self.logger.save_bytes("depth", f"frame-{depth.frame_id:08d}.png", encoded.tobytes())
+            self.logger.event(
+                "depth_image_saved",
+                frame_id=depth.frame_id,
+                image_path=path,
+                width=int(depth.shape[1]),
+                height=int(depth.shape[0]),
+            )
+        except Exception as exc:
+            self.logger.event("depth_image_save_failed", frame_id=depth.frame_id, error=str(exc))

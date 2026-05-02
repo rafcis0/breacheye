@@ -39,8 +39,10 @@ python ai/model_benchmark.py \
 |-------|-----------------|------------------|-------|
 | `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | GGUF OK through `llama-mtmd-cli`; faster through warm `llama-server` | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. CLI benchmark wall `3.12s`; llama internal total `2.27s`; warm server calls were `0.24-0.79s` on cached prompt/image and model-mode server smoke emitted valid nav `hover` in about `2.0s`. |
 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Downloaded from `~/Downloads` plus HF configs into ignored `models/smolvlm2-500m/` | CPU OK; MPS failed | CPU load `4.29s`, first run `6.05s`, output `rotate_right`. Model-mode ZMQ smoke emitted valid nav `rotate_left`. MPS crashed with incompatible matmul shapes. |
-| `moondream/moondream-2b-2025-04-14-4bit` | Projector downloaded; text GGUF still downloading | Pending | Use for detection, not navigation. Needs `moondream2-text-model-f16.gguf` plus `moondream2-mmproj-f16.gguf`. |
-| `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Not downloaded | Pending | Best speed experiment for Apple Silicon. HF checkpoint is about 1.53 GB; Apple's repo also provides Apple Silicon export/runtime paths. |
+| `moondream/moondream-2b-2025-04-14-4bit` | Downloaded | GGUF CPU OK but slow; Metal assertion | Use only as a fallback/research detector. CPU total was `13.94s`; output was not strict JSON. |
+| `depth-anything/Depth-Anything-V2-Small-hf` | Downloaded into ignored `models/depth-anything-v2-small-hf/` | MPS OK | Mean `0.0406s`, about `24.6 FPS`, output shape `1x518x686`. Keep this for depth. |
+| `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Partial; safetensors still needed | Pending | Best speed experiment for Apple Silicon. HF checkpoint is about 1.53 GB; Apple's repo also provides Apple Silicon export/runtime paths. |
+| `apple/ml-depth-pro` | Repo cloned; checkpoint intentionally stopped | Deferred | Interesting for metric depth later, but Depth Anything is already fast enough. |
 | `OpenGVLab/InternVL3-1B` | Pending | Pending | Small HF alternative; may need `trust_remote_code`. |
 | `unsloth/Qwen2.5-VL-3B-Instruct-unsloth-bnb-4bit` | Pending | Pending | bnb 4-bit may be less Mac-friendly. |
 | `unsloth/Qwen3-VL-4B-Instruct-GGUF` | Pending | Blocked until GGUF VLM runtime is installed | Capability fallback if 2B fails quality. |
@@ -104,7 +106,7 @@ breacheye rafa --mode models
 
 This keeps Qwen loaded on Metal and avoids per-keyframe process/model startup.
 
-Moondream detection benchmark, once the text GGUF finishes downloading:
+Moondream detection benchmark:
 
 ```bash
 llama-mtmd-cli \
@@ -114,6 +116,13 @@ llama-mtmd-cli \
   -p "Detect tactical objects or hazards in this indoor frame. Return compact JSON." \
   -n 96 --temp 0
 ```
+
+Observed result on 2026-05-02:
+
+- Metal path loaded then hit a llama.cpp Metal assertion.
+- CPU-only path with `--chat-template vicuna --no-mmproj-offload --no-warmup -ngl 0` completed.
+- Total time was `13.94s`, with image encoding/decoding around `10.1s`; this is too slow for the inner loop.
+- Output was a plain natural-language answer, not strict JSON.
 
 FastVLM first benchmark:
 
@@ -128,6 +137,18 @@ python predict.py \
   --prompt "Return only compact JSON with keys action, confidence, reasoning. Allowed actions: hover, move_forward, rotate_left, rotate_right."
 ```
 
+Depth Anything V2 Small benchmark:
+
+```bash
+python ai/depth_benchmark.py \
+  --runtime depth-anything-hf \
+  --model-path models/depth-anything-v2-small-hf \
+  --image demo/generated/sample-indoor-frame.jpg \
+  --device mps \
+  --warmup 2 \
+  --runs 5
+```
+
 ## Local Environment
 
 ```bash
@@ -135,6 +156,8 @@ export BREACHEYE_QWEN_MODEL=models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf
 export BREACHEYE_QWEN_MMPROJ=models/qwen3-vl-2b/mmproj-F16.gguf
 export BREACHEYE_SMOLVLM_PATH=models/smolvlm2-500m
 export BREACHEYE_SMOLVLM_DEVICE=cpu
+export BREACHEYE_DEPTH_ANYTHING_PATH=models/depth-anything-v2-small-hf
+export BREACHEYE_DEPTH_ANYTHING_DEVICE=mps
 ```
 
 ## Next Download Attempts

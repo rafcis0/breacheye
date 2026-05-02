@@ -11,6 +11,7 @@ logs/<run_id>-rafa.jsonl
 logs/<run_id>-frame_publisher.jsonl
 logs/<run_id>-subscriber_<channel>_<port>.jsonl
 logs/<run_id>/<component>/frames/frame-00000000.jpg
+logs/<run_id>/rafa/depth/frame-00000000.png
 ```
 
 Set a shared run id before a hardware test:
@@ -36,6 +37,7 @@ Rafa pipeline:
 - adapter/model fallback decisions
 - frame receive timeouts
 - frame ids, JPEG byte sizes, and saved received-frame image paths
+- depth visualization PNG paths for each depth output
 - decode failures
 - detection/depth/navigation fallbacks
 - every publish event with frame id, action, counts, and health summary

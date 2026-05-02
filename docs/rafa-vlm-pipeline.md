@@ -36,6 +36,8 @@ BGR numpy arrays are internal only. They are not the ZMQ wire format.
 
 For offline debugging, Rafa saves each received JPEG under `logs/<run_id>/rafa/frames/frame-XXXXXXXX.jpg` and records that path in the `frame_received` JSONL event. The frame publisher also saves the sent JPEG under `logs/<run_id>/frame_publisher/frames/` so we can compare both sides of the ZMQ boundary after a Tello Wi-Fi run.
 
+Rafa also saves a colorized PNG for each depth output under `logs/<run_id>/rafa/depth/frame-XXXXXXXX.png` and records that path in a `depth_image_saved` JSONL event.
+
 ## Outputs
 
 Rafa validates every outgoing payload against Pydantic schemas before publishing.
@@ -62,6 +64,9 @@ Current executable real-model fallback:
   - preferred speed path: run `llama-server` and set `BREACHEYE_QWEN_SERVER_URL`
 - `BREACHEYE_SMOLVLM_PATH=models/smolvlm2-500m`
 - `BREACHEYE_SMOLVLM_DEVICE=cpu`
+- preferred depth path:
+  - `BREACHEYE_DEPTH_ANYTHING_PATH=models/depth-anything-v2-small-hf`
+  - optional `BREACHEYE_DEPTH_ANYTHING_DEVICE=mps`
 - `breacheye rafa --mode models`
 
 Qwen3-VL-2B is the preferred keyframe navigation model. SmolVLM2-500M is a slower CPU fallback and should not be used for every-frame control.
@@ -78,7 +83,7 @@ breacheye rafa doctor --require-models
 The real model path environment variables are:
 
 - `BREACHEYE_MOONDREAM_WEIGHTS`
-- `BREACHEYE_DEPTH_ANYTHING_WEIGHTS`
+- `BREACHEYE_DEPTH_ANYTHING_PATH`
 - `BREACHEYE_QWEN_MODEL`
 - `BREACHEYE_QWEN_MMPROJ` when using a GGUF vision projector
 - `BREACHEYE_SMOLVLM_PATH` for the slow CPU Transformers fallback

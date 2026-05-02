@@ -1,6 +1,6 @@
 # Rafa Model Options
 
-Current decision: use `unsloth/Qwen3-VL-2B-Instruct-GGUF` as the first real navigation VLM target because it already runs through `llama.cpp`. Treat `apple/FastVLM-0.5B` as the next speed experiment for Apple Silicon.
+Current decision: use `unsloth/Qwen3-VL-2B-Instruct-GGUF` as the working navigation VLM target because it already runs through `llama.cpp`. Keep `Depth-Anything-V2-Small-hf` for fast depth and benchmark `apple/FastVLM-0.5B` as the next VLM speed lane.
 
 Do not commit weights. Download them into ignored local paths such as `models/` or `weights/`, then point the pipeline at them with environment variables.
 
@@ -23,8 +23,9 @@ Lock this sequence for Rafa's side:
 3. Use `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` first.
 4. Use the matching `mmproj-F16.gguf` projector.
 5. Keep Qwen loaded with `llama-server` for warm keyframe calls.
-6. Benchmark FastVLM-0.5B as the likely fastest Apple Silicon option after Qwen is stable.
-7. If Qwen fails at runtime, fall back to `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` on CPU.
+6. Benchmark FastVLM-0.5B as the likely fastest Apple Silicon VLM option.
+7. Use `depth-anything/Depth-Anything-V2-Small-hf` for the real depth estimator.
+8. If Qwen/FastVLM fail at runtime, fall back to `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` on CPU.
 
 Expected local environment:
 
@@ -58,6 +59,10 @@ python predict.py \
 
 Do this in `research/` and `models/`; both should stay ignored. If the PyTorch path is too slow or unstable, use Apple's export path from `model_export/` instead of trying to force it through the existing Qwen GGUF adapter.
 
+## Depth Note
+
+Depth Anything V2 Small is the depth path for now. It benchmarked at about `0.041s` per frame on MPS on the sample frame, which is fast enough for the inner loop. Depth Pro is still interesting for metric depth later, but its checkpoint is large and not needed for this demo path.
+
 ## Current Local State
 
 As of the latest readiness check:
@@ -66,7 +71,8 @@ As of the latest readiness check:
 - SmolVLM2-500M is present locally.
 - Moondream projector is present locally; text GGUF download is in progress.
 - FastVLM is not downloaded yet.
-- No Depth Anything V2 weights found.
+- Depth Anything V2 Small is present locally in `models/depth-anything-v2-small-hf`.
+- Depth Pro repo is cloned under ignored `research/ml-depth-pro`; checkpoint download was intentionally stopped.
 - Ollama has `qwen3.6:35b-a3b-q4_K_M` and `gemma4:26b`.
 - No Ollama Qwen VL model found.
 

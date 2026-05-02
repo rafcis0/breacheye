@@ -36,14 +36,57 @@ class LazyDepthAnythingV2Estimator(DepthAdapter):
     name = "depth_anything_v2"
 
     def __init__(self) -> None:
+        self.model_path = os.environ.get("BREACHEYE_DEPTH_ANYTHING_PATH") or os.environ.get("BREACHEYE_DEPTH_ANYTHING_WEIGHTS")
+        if not self.model_path:
+            raise ModelUnavailable("BREACHEYE_DEPTH_ANYTHING_PATH is not set")
+        if not os.path.exists(self.model_path):
+            raise ModelUnavailable(f"Depth Anything V2 path does not exist: {self.model_path}")
         try:
-            import depth_anything_v2  # noqa: F401
+            import torch
+            from transformers import AutoImageProcessor, AutoModelForDepthEstimation
         except ImportError as exc:
-            raise ModelUnavailable("Depth Anything V2 package is not installed") from exc
-        raise ModelUnavailable("Depth Anything V2 weights are not configured")
+            raise ModelUnavailable("transformers and torch are required for Depth Anything V2") from exc
+        self.torch = torch
+        requested_device = os.environ.get("BREACHEYE_DEPTH_ANYTHING_DEVICE")
+        if requested_device:
+            self.device = torch.device(requested_device)
+        elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
+        self.processor = AutoImageProcessor.from_pretrained(self.model_path)
+        self.model = AutoModelForDepthEstimation.from_pretrained(self.model_path).to(self.device)
+        self.model.eval()
 
     async def estimate(self, frame: Any, meta: FrameInput) -> DepthOutput:
-        raise ModelUnavailable("Depth Anything V2 estimator is unavailable")
+        import asyncio
+
+        return await asyncio.to_thread(self._estimate_sync, frame, meta)
+
+    def _estimate_sync(self, frame: Any, meta: FrameInput) -> DepthOutput:
+        import numpy as np
+        from PIL import Image
+
+        image = Image.fromarray(_bgr_to_rgb(frame))
+        inputs = self.processor(images=image, return_tensors="pt")
+        inputs = {key: value.to(self.device) for key, value in inputs.items()}
+        with self.torch.inference_mode():
+            output = self.model(**inputs)
+            depth = output.predicted_depth.detach().float().cpu().squeeze().numpy()
+        finite = np.isfinite(depth)
+        if finite.any():
+            near = float(np.nanpercentile(depth[finite], 2))
+            far = float(np.nanpercentile(depth[finite], 98))
+            denom = max(far - near, 1e-6)
+            relative = np.clip((depth - near) / denom, 0.0, 1.0).astype(np.float32)
+        else:
+            relative = np.ones_like(depth, dtype=np.float32)
+        return DepthOutput(
+            frame_id=meta.frame_id,
+            timestamp=time.time(),
+            shape=relative.shape,
+            depth_bytes=relative.tobytes(),
+        )
 
 
 class LazyQwen3VLNavigator(NavigationAdapter):

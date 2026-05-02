@@ -69,8 +69,8 @@ def check_rafa_readiness(repo_root: Path | None = None) -> RafaReadiness:
         model_checks=[
             _check_import("moondream", "moondream"),
             _check_existing_path("BREACHEYE_MOONDREAM_WEIGHTS", root),
-            _check_import("Depth Anything V2", "depth_anything_v2"),
-            _check_existing_path("BREACHEYE_DEPTH_ANYTHING_WEIGHTS", root),
+            _check_import("Depth Anything V2 runtime", "transformers"),
+            _check_depth_anything_path(root),
             _check_qwen_vl(root),
             _check_optional_existing_path("BREACHEYE_SMOLVLM_PATH", root),
         ],
@@ -99,6 +99,13 @@ def _check_optional_existing_path(env_var: str, repo_root: Path) -> CheckResult:
     value = os.environ.get(env_var)
     if not value:
         return CheckResult(env_var, False, f"{env_var} is not set; optional fallback unavailable")
+    return _check_existing_path(env_var, repo_root)
+
+
+def _check_depth_anything_path(repo_root: Path) -> CheckResult:
+    env_var = "BREACHEYE_DEPTH_ANYTHING_PATH"
+    if not os.environ.get(env_var) and os.environ.get("BREACHEYE_DEPTH_ANYTHING_WEIGHTS"):
+        env_var = "BREACHEYE_DEPTH_ANYTHING_WEIGHTS"
     return _check_existing_path(env_var, repo_root)
 
 
