@@ -112,6 +112,20 @@ REASONING_MAP: dict[str, list[str]] = {
     ],
 }
 
+MOVE_ACTIONS = {"move_forward", "move_back", "move_left", "move_right", "move_up", "move_down"}
+ROTATE_ACTIONS = {"rotate_left", "rotate_right"}
+
+
+def params_for_action(action: str) -> dict[str, int | float | str]:
+    if action in MOVE_ACTIONS:
+        return {"distance_cm": random.randint(20, 50)}
+    if action in ROTATE_ACTIONS:
+        return {"degrees": random.randint(15, 90)}
+    if action == "hover":
+        return {"duration_ms": random.randint(500, 2000)}
+    return {}
+
+
 # Exploration state progression weights (transitions are frame-by-frame probabilistic)
 # Format: {current_state: {next_state: probability}}
 STATE_TRANSITIONS: dict[str, dict[str, float]] = {
@@ -200,9 +214,16 @@ def generate_frame(
     confidence = round(random.uniform(0.30, 0.95), 3)
     reasoning = random.choice(REASONING_MAP.get(action, ["Executing action"]))
 
+    # Final frame always lands
+    if frame_id == total_frames - 1:
+        action = "land"
+        exp_state = "returning"
+        reasoning = random.choice(REASONING_MAP["land"])
+        confidence = 1.0
+
     decision = NavigationDecision(
         action=action,
-        params={},
+        params=params_for_action(action),
         confidence=confidence,
         reasoning=reasoning,
         exploration_state=exp_state,
