@@ -19,6 +19,7 @@ class NavInterpreter:
         self.command_url = command_url
         self._socket = None
         self._client = None  # httpx.AsyncClient
+        self._poller = None
 
     def start(self) -> None:
         import zmq
@@ -34,21 +35,17 @@ class NavInterpreter:
 
         self._client = httpx.AsyncClient()
 
-    def close(self) -> None:
+        self._poller = zmq.asyncio.Poller()
+        self._poller.register(self._socket, zmq.POLLIN)
+
+    async def aclose(self) -> None:
         if self._socket is not None:
             self._socket.close(linger=0)
             self._socket = None
+        if self._poller is not None:
+            self._poller = None
         if self._client is not None:
-            import asyncio
-
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(self._client.aclose())
-                else:
-                    loop.run_until_complete(self._client.aclose())
-            except Exception:
-                pass
+            await self._client.aclose()
             self._client = None
 
     async def run_forever(self) -> None:
@@ -59,29 +56,32 @@ class NavInterpreter:
         import zmq
 
         assert self._socket is not None, "call start() before run_once()"
+        assert self._poller is not None, "call start() before run_once()"
 
-        poller = zmq.asyncio.Poller()
-        poller.register(self._socket, zmq.POLLIN)
-        events = await poller.poll(timeout=500)
+        events = await self._poller.poll(timeout=500)
         if not events:
             return False
 
         try:
-            data = self._socket.recv(zmq.NOBLOCK)
+            data = await self._socket.recv(zmq.NOBLOCK)
         except zmq.Again:
             return False
 
-        nav = decode_navigation(data)
-        logger.info(
-            "recv frame=%d action=%s confidence=%.2f",
-            nav.frame_id,
-            nav.decision.action,
-            nav.decision.confidence,
-        )
+        try:
+            nav = decode_navigation(data)
+            logger.info(
+                "recv frame=%d action=%s confidence=%.2f",
+                nav.frame_id,
+                nav.decision.action,
+                nav.decision.confidence,
+            )
 
-        cmd = self._map_action(nav.decision)
-        await self._post_command(cmd)
-        return True
+            cmd = self._map_action(nav.decision)
+            await self._post_command(cmd)
+            return True
+        except Exception:
+            logger.exception("failed to process nav message")
+            return False
 
     def _map_action(self, decision: NavigationDecision) -> DroneCommand:
         if decision.confidence < 0.5:
@@ -101,7 +101,7 @@ class NavInterpreter:
             return cmd
 
         # RC_CONTROL actions
-        speed = int(decision.params.get("speed_cm_s", 30))
+        speed = max(1, min(100, int(decision.params.get("speed_cm_s", 30))))
 
         if action in ("move_up", "move_down"):
             distance = int(decision.params.get("distance_cm", 25))
