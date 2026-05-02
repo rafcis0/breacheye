@@ -199,7 +199,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         prompt = (
             "Return only compact JSON with keys action, confidence, reasoning. "
             "Allowed action values: hover, move_forward, rotate_left, rotate_right. "
-            "If uncertain, choose hover."
+            "If uncertain, choose hover. No markdown."
         )
         payload = {
             "model": "gpt-4-vision",
@@ -213,7 +213,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
                 }
             ],
             "temperature": 0,
-            "max_tokens": int(os.environ.get("BREACHEYE_QWEN_MAX_TOKENS", "64")),
+            "max_tokens": int(os.environ.get("BREACHEYE_QWEN_MAX_TOKENS", "32")),
         }
         request = urllib.request.Request(
             self.server_url.rstrip("/") + "/v1/chat/completions",

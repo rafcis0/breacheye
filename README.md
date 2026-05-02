@@ -170,6 +170,7 @@ Expected local weight environment variables:
 - `BREACHEYE_QWEN_MODEL`: local Qwen VL GGUF path.
 - `BREACHEYE_QWEN_MMPROJ`: local Qwen multimodal projector path.
 - `BREACHEYE_QWEN_SERVER_URL`: warm `llama-server` URL, preferred for model-mode demos.
+- `BREACHEYE_QWEN_MAX_TOKENS`: optional response cap; default is `32` for faster action decisions.
 - `BREACHEYE_DEPTH_ANYTHING_PATH`: local Depth Anything V2 model directory.
 - `BREACHEYE_DEPTH_ANYTHING_DEVICE`: optional device override, usually `mps` on Apple Silicon.
 - `BREACHEYE_MOONDREAM_WEIGHTS`: optional local Moondream path for research fallback work.

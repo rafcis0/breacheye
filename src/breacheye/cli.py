@@ -22,6 +22,11 @@ def main() -> None:
     smoke = subparsers.add_parser("smoke", help="Run a conservative connect/takeoff/hover/land sequence.")
     smoke.add_argument("--mode", choices=["sim", "tello"], default="sim")
 
+    offline = subparsers.add_parser("offline", help="Prepare or bundle disconnected run logs.")
+    offline.add_argument("offline_command", choices=["preflight", "bundle"])
+    offline.add_argument("--log-dir", default="logs")
+    offline.add_argument("--run-id")
+
     rafa = subparsers.add_parser("rafa", help="Run Rafa's local ZMQ VLM pipeline.")
     rafa.add_argument("rafa_command", nargs="?", choices=["run", "doctor"], default="run")
     rafa.add_argument("--mode", choices=["stub", "models", "detector-only"], default="stub")
@@ -40,6 +45,8 @@ def main() -> None:
         uvicorn.run(app, host=args.host, port=args.port)
     elif args.command == "smoke":
         asyncio.run(_smoke(args.mode))
+    elif args.command == "offline":
+        _offline(args.offline_command, log_dir=args.log_dir, run_id=args.run_id)
     elif args.command == "rafa":
         if args.rafa_command == "doctor":
             _rafa_doctor(json_output=args.json, require_models=args.require_models)
@@ -82,6 +89,16 @@ def _rafa_doctor(json_output: bool = False, require_models: bool = False) -> Non
     print(readiness.to_json() if json_output else readiness.to_text())
     if not readiness.stub_ready or (require_models and not readiness.models_ready):
         raise SystemExit(1)
+
+
+def _offline(command: str, log_dir: str = "logs", run_id: str | None = None) -> None:
+    from breacheye.offline import create_bundle, write_preflight
+
+    if command == "preflight":
+        path = write_preflight(log_dir=log_dir, run_id=run_id)
+    else:
+        path = create_bundle(log_dir=log_dir, run_id=run_id)
+    print(path)
 
 
 if __name__ == "__main__":

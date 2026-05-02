@@ -37,7 +37,7 @@ python ai/model_benchmark.py \
 
 | Model | Download status | Benchmark status | Notes |
 |-------|-----------------|------------------|-------|
-| `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | GGUF OK through `llama-mtmd-cli`; faster through warm `llama-server` | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. CLI benchmark wall `3.12s`; llama internal total `2.27s`; warm server calls were `0.24-0.79s` on cached prompt/image and model-mode server smoke emitted valid nav `hover` in about `2.0s`. |
+| `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Downloaded from `~/Downloads` into ignored `models/qwen3-vl-2b/` | GGUF OK through `llama-mtmd-cli`; fastest through warm `llama-server` | First target. Local files present: `Qwen3-VL-2B-Instruct-Q4_K_M.gguf` and `mmproj-F16.gguf`. CLI benchmark wall `3.12s`; llama internal total `2.27s`; model-mode server smoke emitted valid nav `hover` in about `2.0s`. Cache-busted warm server benchmark with `No markdown` prompt and `max_tokens=32` averaged `1.31s`; `max_tokens=48` averaged `1.25s`. |
 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Downloaded from `~/Downloads` plus HF configs into ignored `models/smolvlm2-500m/` | CPU OK; MPS failed | CPU load `4.29s`, first run `6.05s`, output `rotate_right`. Model-mode ZMQ smoke emitted valid nav `rotate_left`. MPS crashed with incompatible matmul shapes. |
 | `moondream/moondream-2b-2025-04-14-4bit` | Downloaded | GGUF CPU OK but slow; Metal assertion | Use only as a fallback/research detector. CPU total was `13.94s`; output was not strict JSON. |
 | `depth-anything/Depth-Anything-V2-Small-hf` | Downloaded into ignored `models/depth-anything-v2-small-hf/` | MPS OK | Mean `0.0406s`, about `24.6 FPS`, output shape `1x518x686`. Keep this for depth. |
@@ -105,6 +105,27 @@ breacheye rafa --mode models
 ```
 
 This keeps Qwen loaded on Metal and avoids per-keyframe process/model startup.
+
+Qwen server benchmark, cache-busted, 2026-05-02:
+
+```bash
+python ai/qwen_server_benchmark.py \
+  --runs 5 \
+  --warmup 1 \
+  --max-tokens 32 \
+  --cache-bust \
+  --output demo/benchmarks/qwen3-vl-2b-server-cachebust-32tokens-nomarkdown.json
+```
+
+Observed results:
+
+- `max_tokens=64`, old prompt: mean `1.79s`, min `1.66s`, max `2.12s`.
+- `max_tokens=32`, old prompt: mean `1.55s`, min `1.39s`, max `1.73s`.
+- `max_tokens=16`, old prompt: mean `1.22s`, but output was truncated after the confidence key.
+- `max_tokens=32`, `No markdown` prompt: mean `1.31s`, min `1.21s`, max `1.58s`; output was compact JSON with action/confidence.
+- `max_tokens=48`, `No markdown` prompt: mean `1.25s`, min `1.22s`, max `1.28s`; output was compact JSON with action/confidence.
+
+Recommendation: keep Qwen server warm and default `BREACHEYE_QWEN_MAX_TOKENS` to `32`. Use `16` only for an action-only emergency speed lane, because it trims useful reasoning.
 
 Moondream detection benchmark:
 

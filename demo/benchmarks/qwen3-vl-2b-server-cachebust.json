@@ -1,0 +1,25 @@
+{
+  "cache_bust": true,
+  "image": "demo/generated/sample-indoor-frame.jpg",
+  "max_s": 1.7292762500001118,
+  "max_tokens": 32,
+  "mean_s": 1.5463584664044903,
+  "min_s": 1.3928042500047013,
+  "outputs": [
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock"
+  ],
+  "runs": 5,
+  "server_url": "http://127.0.0.1:56262",
+  "timings_s": [
+    1.3928042500047013,
+    1.4559561660280451,
+    1.4475896660005674,
+    1.7292762500001118,
+    1.7061659999890253
+  ],
+  "warmup": 1
+}

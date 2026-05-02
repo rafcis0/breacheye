@@ -1,0 +1,25 @@
+{
+  "cache_bust": true,
+  "image": "demo/generated/sample-indoor-frame.jpg",
+  "max_s": 1.5799854160286486,
+  "max_tokens": 32,
+  "mean_s": 1.3067185666179284,
+  "min_s": 1.2142449580132961,
+  "outputs": [
+    "{\"action\": \"hover\", \"confidence\": 0.95}",
+    "{\"action\": \"hover\", \"confidence\": 0.95}",
+    "{\"action\": \"hover\", \"confidence\": 0.95}",
+    "{\"action\": \"hover\", \"confidence\": 0.95}",
+    "{\"action\": \"hover\", \"confidence\": 0.95}"
+  ],
+  "runs": 5,
+  "server_url": "http://127.0.0.1:56262",
+  "timings_s": [
+    1.2229577079997398,
+    1.2142449580132961,
+    1.5799854160286486,
+    1.289488667040132,
+    1.2269160840078257
+  ],
+  "warmup": 1
+}

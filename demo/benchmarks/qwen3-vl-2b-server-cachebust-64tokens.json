@@ -1,0 +1,25 @@
+{
+  "cache_bust": true,
+  "image": "demo/generated/sample-indoor-frame.jpg",
+  "max_s": 2.1207025829935446,
+  "max_tokens": 64,
+  "mean_s": 1.7868258917937054,
+  "min_s": 1.6647071249899454,
+  "outputs": [
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock indoor corridor with two rectangular shapes. The scene is static and does not indicate any immediate need for navigation or interaction. Given the lack of dynamic elements or explicit instructions",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock indoor corridor with two rectangular shapes. The scene is static and does not indicate any immediate need for navigation or interaction. Given the lack of dynamic elements or explicit instructions",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock indoor corridor with two rectangular shapes. The scene is static and does not indicate any immediate need for navigation or interaction. Given the lack of dynamic elements or explicit instructions",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock indoor corridor with two rectangular objects. The scene is static and no movement or interaction is indicated. Given the lack of any clear action or navigation cues, the most",
+    "```json\n{\n  \"action\": \"hover\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"The image shows a mock indoor corridor with two rectangular shapes. The scene is static and does not indicate any immediate need for navigation or interaction. Given the lack of dynamic elements or explicit instructions"
+  ],
+  "runs": 5,
+  "server_url": "http://127.0.0.1:56262",
+  "timings_s": [
+    1.6647071249899454,
+    1.6696862090029754,
+    2.1207025829935446,
+    1.7547847089590505,
+    1.7242488330230117
+  ],
+  "warmup": 1
+}

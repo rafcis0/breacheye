@@ -8,7 +8,7 @@ Do not commit weights. Download them into ignored local paths such as `models/` 
 
 | Rank | Model | Source | Why it matters | Tradeoff |
 |------|-------|--------|----------------|----------|
-| 1 | `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Unsloth / HF | Current working model. Real Qwen VL family, Apache-2.0, GGUF quantization, small enough for local testing. Q4 model is about 1.0 GB plus projector. | Good keyframe latency, but still not every-frame control. |
+| 1 | `unsloth/Qwen3-VL-2B-Instruct-GGUF` | Unsloth / HF | Current working model. Real Qwen VL family, Apache-2.0, GGUF quantization, small enough for local testing. Q4 model is about 1.0 GB plus projector. Warm server benchmark is about `1.3s` with cache-busted requests. | Good keyframe latency, but still not every-frame control. |
 | 2 | `apple/FastVLM-0.5B` / `apple/ml-fastvlm` | Apple / HF | Best speed experiment. Apple reports the smallest variant has much faster TTFT than comparable small VLMs and provides Apple Silicon export/runtime paths. HF has a 1.53 GB 0.5B checkpoint, now downloaded locally. | Runnable through Apple's PyTorch path, but current prompts did not produce reliable strict navigation JSON. Needs wrapper/export work before demo use. |
 | 3 | `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` | Hugging Face | Smallest fallback that already runs locally through Transformers CPU. | ~6s CPU inference in our benchmark; MPS crashed on attention shape. |
 | 4 | `OpenGVLab/InternVL3-1B` | Hugging Face | Very small multimodal model, Apache/MIT-compatible components, explicit spatial/GUI/multimodal capabilities. | Uses custom code/trust-remote-code path and may be less convenient on Apple Silicon. |
@@ -32,6 +32,8 @@ Expected local environment:
 ```bash
 export BREACHEYE_QWEN_MODEL="models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf"
 export BREACHEYE_QWEN_MMPROJ="models/qwen3-vl-2b/mmproj-F16.gguf"
+export BREACHEYE_QWEN_SERVER_URL="http://127.0.0.1:56262"
+export BREACHEYE_QWEN_MAX_TOKENS=32
 ```
 
 Then:
