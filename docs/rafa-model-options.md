@@ -78,7 +78,7 @@ As of the latest readiness check:
 
 - Qwen3-VL-2B GGUF and projector are present locally.
 - SmolVLM2-500M is present locally.
-- Moondream GGUF text model and projector are present locally, but the tested GGUF path is too slow for the inner loop.
+- Moondream GGUF text model and projector are present locally, but the tested GGUF path is too slow for the inner loop. The Python Photon path is also blocked locally by a Kestrel Torch/MPS binary mismatch.
 - FastVLM is present locally and runnable through `research/.fastvlm-py311-venv`, but not yet reliable enough for strict navigation JSON.
 - Depth Anything V2 Small is present locally in `models/depth-anything-v2-small-hf`.
 - Depth Pro repo is cloned under ignored `research/ml-depth-pro`; checkpoint download was intentionally stopped.

@@ -144,6 +144,7 @@ Observed result on 2026-05-02:
 - CPU-only path with `--chat-template vicuna --no-mmproj-offload --no-warmup -ngl 0` completed.
 - Total time was `13.94s`, with image encoding/decoding around `10.1s`; this is too slow for the inner loop.
 - Output was a plain natural-language answer, not strict JSON.
+- The local Python `moondream` package imports, but Photon local mode depends on Kestrel. Importing Kestrel currently fails on this machine with a Torch/MPS symbol mismatch in `_kestrel_mps.so`, so Photon/MPS is blocked separately from the GGUF Metal assertion.
 
 FastVLM first benchmark:
 
