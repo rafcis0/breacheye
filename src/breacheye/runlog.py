@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +16,9 @@ class RunLogger:
         self.run_id = run_id or os.environ.get("BREACHEYE_RUN_ID") or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         root = Path(log_dir or os.environ.get("BREACHEYE_LOG_DIR", "logs")).expanduser()
         root.mkdir(parents=True, exist_ok=True)
+        self.root = root
         self.path = root / f"{self.run_id}-{component}.jsonl"
+        self.artifact_dir = root / self.run_id / component
         self._lock = threading.Lock()
 
     def event(self, event: str, **fields: Any) -> None:
@@ -31,6 +34,15 @@ class RunLogger:
         with self._lock:
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
+
+    def save_bytes(self, category: str, name: str, data: bytes) -> Path:
+        category_path = self.artifact_dir / _safe_path_part(category)
+        filename = _safe_path_part(name)
+        category_path.mkdir(parents=True, exist_ok=True)
+        path = category_path / filename
+        with self._lock:
+            path.write_bytes(data)
+        return path
 
 
 def summarize_payload(payload: Any) -> dict[str, Any]:
@@ -70,3 +82,8 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     return repr(value)
+
+
+def _safe_path_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._")
+    return cleaned or "artifact"

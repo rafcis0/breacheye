@@ -56,9 +56,19 @@ class FramePublisher:
                 if limit is not None and frame_id >= limit:
                     break
                 height, width = frame.shape[:2]
-                payload = frame_payload(frame_id, frame, width=width, height=height)
+                jpeg_bytes = encode_jpeg(frame)
+                payload = frame_payload(frame_id, jpeg_bytes, width=width, height=height)
                 socket.send(payload)
-                self.logger.event("frame_published", frame_id=frame_id, width=width, height=height, payload_bytes=len(payload))
+                image_path = self.logger.save_bytes("frames", f"frame-{frame_id:08d}.jpg", jpeg_bytes)
+                self.logger.event(
+                    "frame_published",
+                    frame_id=frame_id,
+                    width=width,
+                    height=height,
+                    payload_bytes=len(payload),
+                    jpeg_bytes=len(jpeg_bytes),
+                    image_path=image_path,
+                )
                 print(f"published frame_id={frame_id} size={width}x{height}")
                 if self.interval_s:
                     time.sleep(self.interval_s)
@@ -67,14 +77,14 @@ class FramePublisher:
             socket.close(linger=0)
 
 
-def frame_payload(frame_id: int, frame, width: int | None = None, height: int | None = None) -> bytes:
+def frame_payload(frame_id: int, jpeg_bytes: bytes, width: int | None = None, height: int | None = None) -> bytes:
     return encode_msgpack(
         FrameInput(
             frame_id=frame_id,
             timestamp=time.time(),
             width=width,
             height=height,
-            jpeg_bytes=encode_jpeg(frame),
+            jpeg_bytes=jpeg_bytes,
         )
     )
 

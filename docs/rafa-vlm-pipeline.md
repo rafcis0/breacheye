@@ -34,6 +34,8 @@ cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
 
 BGR numpy arrays are internal only. They are not the ZMQ wire format.
 
+For offline debugging, Rafa saves each received JPEG under `logs/<run_id>/rafa/frames/frame-XXXXXXXX.jpg` and records that path in the `frame_received` JSONL event. The frame publisher also saves the sent JPEG under `logs/<run_id>/frame_publisher/frames/` so we can compare both sides of the ZMQ boundary after a Tello Wi-Fi run.
+
 ## Outputs
 
 Rafa validates every outgoing payload against Pydantic schemas before publishing.

@@ -10,6 +10,7 @@ By default, each process writes:
 logs/<run_id>-rafa.jsonl
 logs/<run_id>-frame_publisher.jsonl
 logs/<run_id>-subscriber_<channel>_<port>.jsonl
+logs/<run_id>/<component>/frames/frame-00000000.jpg
 ```
 
 Set a shared run id before a hardware test:
@@ -34,7 +35,7 @@ Rafa pipeline:
 - startup mode and ports
 - adapter/model fallback decisions
 - frame receive timeouts
-- frame ids and JPEG byte sizes
+- frame ids, JPEG byte sizes, and saved received-frame image paths
 - decode failures
 - detection/depth/navigation fallbacks
 - every publish event with frame id, action, counts, and health summary
@@ -42,7 +43,7 @@ Rafa pipeline:
 Frame publisher:
 
 - startup endpoint and cadence
-- every published frame id, dimensions, and payload size
+- every published frame id, dimensions, payload size, and saved sent-frame image path
 - shutdown
 
 Subscriber probe:
@@ -81,4 +82,5 @@ After reconnecting, inspect:
 
 ```bash
 tail -n 100 logs/${BREACHEYE_RUN_ID}-rafa.jsonl
+find logs/${BREACHEYE_RUN_ID} -type f | sort | head
 ```

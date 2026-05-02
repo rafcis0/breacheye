@@ -202,7 +202,15 @@ class RafaPipeline:
         except asyncio.TimeoutError:
             self.logger.event("frame_recv_timeout", timeout_s=self.config.recv_timeout_s)
             return False
-        self.logger.event("frame_received", frame_id=frame_meta.frame_id, jpeg_bytes=len(frame_meta.jpeg_bytes), width=frame_meta.width, height=frame_meta.height)
+        frame_path = self.logger.save_bytes("frames", f"frame-{frame_meta.frame_id:08d}.jpg", frame_meta.jpeg_bytes)
+        self.logger.event(
+            "frame_received",
+            frame_id=frame_meta.frame_id,
+            jpeg_bytes=len(frame_meta.jpeg_bytes),
+            width=frame_meta.width,
+            height=frame_meta.height,
+            image_path=frame_path,
+        )
         try:
             frame = decode_jpeg_bgr(frame_meta.jpeg_bytes)
         except Exception as exc:
