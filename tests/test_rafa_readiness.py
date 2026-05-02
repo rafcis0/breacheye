@@ -9,6 +9,7 @@ def test_readiness_reports_stub_and_model_state(monkeypatch, tmp_path: Path) -> 
     monkeypatch.delenv("BREACHEYE_MOONDREAM_WEIGHTS", raising=False)
     monkeypatch.delenv("BREACHEYE_DEPTH_ANYTHING_WEIGHTS", raising=False)
     monkeypatch.delenv("BREACHEYE_QWEN_MODEL", raising=False)
+    monkeypatch.delenv("BREACHEYE_QWEN_MMPROJ", raising=False)
 
     readiness = check_rafa_readiness(tmp_path)
 

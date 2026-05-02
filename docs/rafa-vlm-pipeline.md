@@ -65,5 +65,8 @@ The real model path environment variables are:
 - `BREACHEYE_MOONDREAM_WEIGHTS`
 - `BREACHEYE_DEPTH_ANYTHING_WEIGHTS`
 - `BREACHEYE_QWEN_MODEL`
+- `BREACHEYE_QWEN_MMPROJ` when using a GGUF vision projector
 
 `--require-models` exits non-zero until model packages and local weights are available. `stub` mode remains the required demo fallback.
+
+The current first target for navigation reasoning is documented in `docs/rafa-model-options.md`.

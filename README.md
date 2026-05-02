@@ -186,4 +186,5 @@ The suite uses simulator, mocks, and in-process ZMQ. It does not require Tello h
 - [Architecture](docs/architecture.md): control boundaries and process layout.
 - [Hardware runbook](docs/hardware-runbook.md): Tello setup and smoke testing.
 - [Rafa VLM pipeline](docs/rafa-vlm-pipeline.md): Rafa/Cooper pipeline contract.
+- [Rafa model options](docs/rafa-model-options.md): current top VLM candidates and the locked first target.
 - [LLM control boundary](docs/llm-control-boundary.md): safe planner interface.

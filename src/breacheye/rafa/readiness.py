@@ -100,6 +100,14 @@ def _check_qwen_vl(repo_root: Path) -> CheckResult:
         path = Path(env_path).expanduser()
         if not path.is_absolute():
             path = repo_root / path
+        projector_value = os.environ.get("BREACHEYE_QWEN_MMPROJ")
+        if path.exists() and projector_value:
+            projector = Path(projector_value).expanduser()
+            if not projector.is_absolute():
+                projector = repo_root / projector
+            if not projector.exists():
+                return CheckResult("qwen3_vl", False, f"BREACHEYE_QWEN_MMPROJ points to missing path {projector}")
+            return CheckResult("qwen3_vl", True, f"BREACHEYE_QWEN_MODEL={path}; BREACHEYE_QWEN_MMPROJ={projector}")
         if path.exists():
             return CheckResult("qwen3_vl", True, f"BREACHEYE_QWEN_MODEL={path}")
         return CheckResult("qwen3_vl", False, f"BREACHEYE_QWEN_MODEL points to missing path {path}")
