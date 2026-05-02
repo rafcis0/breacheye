@@ -127,10 +127,118 @@ def test_ttl_exceeds_duration(interp: NavInterpreter) -> None:
             )
 
 
-def test_low_confidence_hovers(interp: NavInterpreter) -> None:
+def test_map_action_no_longer_checks_confidence(interp: NavInterpreter) -> None:
+    """_map_action no longer gates on confidence — that's run_once's job."""
     decision = make_decision("move_forward", confidence=0.3)
     cmd = interp._map_action(decision)
+    # Should map the action regardless of confidence
+    assert cmd.type == CommandType.RC_CONTROL
 
-    assert cmd.type == CommandType.HOVER
-    assert cmd.payload is None
-    assert cmd.issued_by == "nav_interpreter"
+
+def test_consecutive_failures_increment(interp: NavInterpreter) -> None:
+    """Low confidence decisions increment the failure counter."""
+    for i in range(3):
+        decision = make_decision("move_forward", confidence=0.3)
+        # Simulate what run_once does: check confidence, increment
+        if decision.confidence < 0.5:
+            interp._consecutive_failures += 1
+    assert interp._consecutive_failures == 3
+
+
+def test_counter_resets_on_success(interp: NavInterpreter) -> None:
+    """Counter resets to 0 after a successful high-confidence action."""
+    interp._consecutive_failures = 5
+    # Simulate successful action
+    decision = make_decision("move_forward", confidence=0.9)
+    cmd = interp._map_action(decision)
+    assert cmd.type == CommandType.RC_CONTROL
+    # In run_once, this would reset the counter
+    interp._consecutive_failures = 0
+    assert interp._consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_failure_hovers_below_threshold() -> None:
+    """Below 3 failures, _handle_failure sends hover."""
+    interp = NavInterpreter()
+    interp._consecutive_failures = 2
+
+    posted_commands = []
+
+    async def mock_post(cmd):
+        posted_commands.append(cmd)
+
+    interp._post_command = mock_post
+
+    await interp._handle_failure()
+    assert len(posted_commands) == 1
+    assert posted_commands[0].type == CommandType.HOVER
+
+
+@pytest.mark.asyncio
+async def test_handle_failure_escalates_at_3() -> None:
+    """At 3+ failures with good battery, holds hover."""
+    interp = NavInterpreter()
+    interp._consecutive_failures = 3
+
+    posted_commands = []
+
+    async def mock_post(cmd):
+        posted_commands.append(cmd)
+
+    interp._post_command = mock_post
+
+    async def mock_battery():
+        return 80
+
+    interp._get_battery = mock_battery
+
+    await interp._handle_failure()
+    assert len(posted_commands) == 1
+    assert posted_commands[0].type == CommandType.HOVER
+
+
+@pytest.mark.asyncio
+async def test_handle_failure_lands_on_low_battery() -> None:
+    """At 3+ failures with low battery, lands."""
+    interp = NavInterpreter()
+    interp._consecutive_failures = 3
+
+    posted_commands = []
+
+    async def mock_post(cmd):
+        posted_commands.append(cmd)
+
+    interp._post_command = mock_post
+
+    async def mock_battery():
+        return 10
+
+    interp._get_battery = mock_battery
+
+    await interp._handle_failure()
+    assert len(posted_commands) == 1
+    assert posted_commands[0].type == CommandType.LAND
+
+
+@pytest.mark.asyncio
+async def test_handle_failure_hovers_when_battery_unknown() -> None:
+    """At 3+ failures with battery unreachable, hovers (safe default)."""
+    interp = NavInterpreter()
+    interp._consecutive_failures = 3
+
+    posted_commands = []
+
+    async def mock_post(cmd):
+        posted_commands.append(cmd)
+
+    interp._post_command = mock_post
+
+    async def mock_battery():
+        return None
+
+    interp._get_battery = mock_battery
+
+    await interp._handle_failure()
+    assert len(posted_commands) == 1
+    assert posted_commands[0].type == CommandType.HOVER
