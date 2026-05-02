@@ -1,0 +1,402 @@
+{
+  "0": {
+    "detections": [
+      {
+        "id": "det-000-001",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Entry foyer mapped",
+        "confidence": 0.91,
+        "bbox_2d": {"x1": 100, "y1": 50, "x2": 850, "y2": 680},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 18
+  },
+  "10": {
+    "detections": [
+      {
+        "id": "det-010-001",
+        "category": "T1-01",
+        "label": "Entry/Exit Point",
+        "description": "Front door — primary entry vector",
+        "confidence": 0.88,
+        "bbox_2d": {"x1": 320, "y1": 80, "x2": 640, "y2": 680},
+        "threat_level": "INFO",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 21
+  },
+  "22": {
+    "detections": [
+      {
+        "id": "det-022-001",
+        "category": "T1-01",
+        "label": "Entry/Exit Point",
+        "description": "Side door detected left wall",
+        "confidence": 0.75,
+        "bbox_2d": {"x1": 40, "y1": 120, "x2": 280, "y2": 620},
+        "threat_level": "INFO",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-022-002",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Foyer perimeter confirmed",
+        "confidence": 0.82,
+        "bbox_2d": {"x1": 280, "y1": 60, "x2": 900, "y2": 690},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 24
+  },
+  "38": {
+    "detections": [
+      {
+        "id": "det-038-001",
+        "category": "T1-02",
+        "label": "Fatal Funnel",
+        "description": "Doorway transition — fatal funnel risk",
+        "confidence": 0.79,
+        "bbox_2d": {"x1": 380, "y1": 100, "x2": 580, "y2": 660},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 19
+  },
+  "55": {
+    "detections": [
+      {
+        "id": "det-055-001",
+        "category": "T2-03",
+        "label": "Chokepoint",
+        "description": "Narrow corridor — single file only",
+        "confidence": 0.87,
+        "bbox_2d": {"x1": 200, "y1": 200, "x2": 760, "y2": 540},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 22
+  },
+  "68": {
+    "detections": [
+      {
+        "id": "det-068-001",
+        "category": "T1-02",
+        "label": "Fatal Funnel",
+        "description": "T-junction at corridor midpoint",
+        "confidence": 0.93,
+        "bbox_2d": {"x1": 300, "y1": 150, "x2": 660, "y2": 600},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-068-002",
+        "category": "T2-03",
+        "label": "Chokepoint",
+        "description": "Blind corner right side",
+        "confidence": 0.71,
+        "bbox_2d": {"x1": 660, "y1": 200, "x2": 920, "y2": 580},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 31
+  },
+  "85": {
+    "detections": [
+      {
+        "id": "det-085-001",
+        "category": "T2-03",
+        "label": "Chokepoint",
+        "description": "Fire door — corridor bottleneck",
+        "confidence": 0.84,
+        "bbox_2d": {"x1": 350, "y1": 80, "x2": 610, "y2": 680},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 20
+  },
+  "100": {
+    "detections": [
+      {
+        "id": "det-100-001",
+        "category": "T2-02",
+        "label": "Threat Indicator",
+        "description": "Overturned furniture — possible contact sign",
+        "confidence": 0.68,
+        "bbox_2d": {"x1": 80, "y1": 340, "x2": 500, "y2": 700},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 25
+  },
+  "115": {
+    "detections": [
+      {
+        "id": "det-115-001",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Office space — open floor plan",
+        "confidence": 0.90,
+        "bbox_2d": {"x1": 60, "y1": 40, "x2": 900, "y2": 700},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-115-002",
+        "category": "T3-01",
+        "label": "Utility Panel",
+        "description": "Electrical panel north wall",
+        "confidence": 0.77,
+        "bbox_2d": {"x1": 780, "y1": 180, "x2": 940, "y2": 480},
+        "threat_level": "INFO",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 28
+  },
+  "130": {
+    "detections": [
+      {
+        "id": "det-130-001",
+        "category": "T3-01",
+        "label": "Utility Panel",
+        "description": "Network patch panel — comms hub",
+        "confidence": 0.72,
+        "bbox_2d": {"x1": 60, "y1": 200, "x2": 300, "y2": 520},
+        "threat_level": "INFO",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 18
+  },
+  "145": {
+    "detections": [
+      {
+        "id": "det-145-001",
+        "category": "T2-02",
+        "label": "Threat Indicator",
+        "description": "Barricaded door — deliberate obstruction",
+        "confidence": 0.85,
+        "bbox_2d": {"x1": 280, "y1": 60, "x2": 680, "y2": 680},
+        "threat_level": "HOT",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-145-002",
+        "category": "T2-03",
+        "label": "Chokepoint",
+        "description": "Stacked furniture narrows passage",
+        "confidence": 0.78,
+        "bbox_2d": {"x1": 680, "y1": 300, "x2": 940, "y2": 700},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 33
+  },
+  "160": {
+    "detections": [
+      {
+        "id": "det-160-001",
+        "category": "T2-02",
+        "label": "Threat Indicator",
+        "description": "Broken glass — forced entry evidence",
+        "confidence": 0.65,
+        "bbox_2d": {"x1": 100, "y1": 400, "x2": 600, "y2": 710},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 22
+  },
+  "175": {
+    "detections": [
+      {
+        "id": "det-175-001",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Storage room cleared",
+        "confidence": 0.88,
+        "bbox_2d": {"x1": 80, "y1": 50, "x2": 880, "y2": 690},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 19
+  },
+  "188": {
+    "detections": [
+      {
+        "id": "det-188-001",
+        "category": "T1-03",
+        "label": "Stairs/Vertical",
+        "description": "Stairwell — vertical access to second floor",
+        "confidence": 0.95,
+        "bbox_2d": {"x1": 240, "y1": 60, "x2": 720, "y2": 700},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 20
+  },
+  "200": {
+    "detections": [
+      {
+        "id": "det-200-001",
+        "category": "T1-03",
+        "label": "Stairs/Vertical",
+        "description": "Stair landing — midpoint",
+        "confidence": 0.89,
+        "bbox_2d": {"x1": 180, "y1": 100, "x2": 780, "y2": 660},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-200-002",
+        "category": "T1-02",
+        "label": "Fatal Funnel",
+        "description": "Stair top — exposure risk on ascent",
+        "confidence": 0.81,
+        "bbox_2d": {"x1": 340, "y1": 60, "x2": 620, "y2": 380},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 29
+  },
+  "215": {
+    "detections": [
+      {
+        "id": "det-215-001",
+        "category": "T1-01",
+        "label": "Entry/Exit Point",
+        "description": "Roof access door — secondary egress",
+        "confidence": 0.74,
+        "bbox_2d": {"x1": 600, "y1": 80, "x2": 900, "y2": 640},
+        "threat_level": "INFO",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 21
+  },
+  "228": {
+    "detections": [
+      {
+        "id": "det-228-001",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Second floor open area — mapped",
+        "confidence": 0.92,
+        "bbox_2d": {"x1": 50, "y1": 40, "x2": 910, "y2": 700},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 17
+  },
+  "242": {
+    "detections": [
+      {
+        "id": "det-242-001",
+        "category": "T4-01",
+        "label": "Structural Damage",
+        "description": "Ceiling collapse — partial obstruction",
+        "confidence": 0.83,
+        "bbox_2d": {"x1": 60, "y1": 40, "x2": 700, "y2": 420},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 23
+  },
+  "256": {
+    "detections": [
+      {
+        "id": "det-256-001",
+        "category": "T4-01",
+        "label": "Structural Damage",
+        "description": "Load-bearing wall crack — structural integrity risk",
+        "confidence": 0.76,
+        "bbox_2d": {"x1": 400, "y1": 80, "x2": 860, "y2": 560},
+        "threat_level": "HOT",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-256-002",
+        "category": "T3-01",
+        "label": "Utility Panel",
+        "description": "Exposed conduit — fire risk",
+        "confidence": 0.69,
+        "bbox_2d": {"x1": 60, "y1": 180, "x2": 380, "y2": 560},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 30
+  },
+  "270": {
+    "detections": [
+      {
+        "id": "det-270-001",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Conference room — second floor east",
+        "confidence": 0.87,
+        "bbox_2d": {"x1": 80, "y1": 60, "x2": 880, "y2": 680},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 19
+  },
+  "283": {
+    "detections": [
+      {
+        "id": "det-283-001",
+        "category": "T2-02",
+        "label": "Threat Indicator",
+        "description": "Personal effects abandoned — recent occupancy sign",
+        "confidence": 0.71,
+        "bbox_2d": {"x1": 100, "y1": 380, "x2": 560, "y2": 700},
+        "threat_level": "WARM",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 22
+  },
+  "295": {
+    "detections": [
+      {
+        "id": "det-295-001",
+        "category": "T4-01",
+        "label": "Structural Damage",
+        "description": "Window frame damaged — external breach point",
+        "confidence": 0.80,
+        "bbox_2d": {"x1": 560, "y1": 60, "x2": 940, "y2": 560},
+        "threat_level": "CAUTION",
+        "detection_model": "moondream"
+      },
+      {
+        "id": "det-295-002",
+        "category": "ROOM",
+        "label": "Room/Open Area",
+        "description": "Second floor west corridor — coverage complete",
+        "confidence": 0.94,
+        "bbox_2d": {"x1": 40, "y1": 40, "x2": 540, "y2": 700},
+        "threat_level": "CLEAR",
+        "detection_model": "moondream"
+      }
+    ],
+    "processing_ms": 26
+  }
+}
