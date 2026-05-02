@@ -1,4 +1,3 @@
-import React from 'react'
 import VideoPanel from './components/VideoPanel'
 import PlaceholderCard from './components/PlaceholderCard'
 import './App.css'
