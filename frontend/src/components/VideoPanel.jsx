@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 
 const MJPEG_URL = '/api/video.mjpeg'
 
-export default function VideoPanel() {
+export default function VideoPanel({ frameRef }) {
   const [hasSignal, setHasSignal] = useState(true)
   const retryRef = useRef(null)
 
@@ -45,7 +45,7 @@ export default function VideoPanel() {
         </div>
       </div>
 
-      <div className="video-panel__frame">
+      <div className="video-panel__frame" ref={frameRef}>
         {hasSignal ? (
           <img
             src={MJPEG_URL}
