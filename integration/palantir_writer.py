@@ -40,6 +40,8 @@ class PalantirWriter:
         zmq_port: int = 5556,
     ) -> None:
         self._host = host.rstrip("/")
+        if not self._host.startswith("https://"):
+            raise ValueError("FOUNDRY_HOST must use HTTPS")
         self._token = token
         self._ontology = ontology
         self._action = action
@@ -61,6 +63,8 @@ class PalantirWriter:
 
         self._auth_failed = False
         self._last_auth_warn_ts: float = 0.0
+        self._action_missing = False
+        self._last_action_warn_ts: float = 0.0
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -130,6 +134,16 @@ class PalantirWriter:
                 self._last_auth_warn_ts = now
             return
 
+        if self._action_missing:
+            now = time.time()
+            if now - self._last_action_warn_ts >= 30.0:
+                logger.warning(
+                    "Foundry action '%s' not found — waiting for Palantir staff to create it.",
+                    self._action,
+                )
+                self._last_action_warn_ts = now
+            return
+
         with self._queue_lock:
             batch = list(self._queue)
             self._queue.clear()
@@ -144,6 +158,9 @@ class PalantirWriter:
                 for poi in reversed(batch):
                     self._queue.appendleft(poi)
 
+        now = time.time()
+        self._seen = {k: v for k, v in self._seen.items() if now - v[0] < 2.0}
+
     def _push_batch(self, pois: list[dict]) -> bool:
         url = (
             f"{self._host}/api/v2/ontologies/{self._ontology}"
@@ -157,11 +174,11 @@ class PalantirWriter:
         try:
             resp = requests.post(url, json=body, headers=headers, timeout=10)
         except requests.ConnectionError:
-            logger.warning("Foundry unreachable — will retry next cycle")
+            logger.warning("Foundry connection refused — will retry next cycle")
             self._retry_count += 1
             return False
         except requests.Timeout:
-            logger.warning("Foundry unreachable — will retry next cycle")
+            logger.warning("Foundry request timed out — will retry next cycle")
             self._retry_count += 1
             return False
 
@@ -174,6 +191,7 @@ class PalantirWriter:
                 "Foundry action '%s' not found — ask Palantir staff to create it.",
                 self._action,
             )
+            self._action_missing = True
             self._failed_count += len(pois)
             return False
         elif resp.status_code in (401, 403):
