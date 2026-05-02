@@ -23,12 +23,15 @@ def main() -> None:
 
     points, stats = build_point_cloud(depth_dir=depth_dir, stride=args.stride, max_frames=args.max_frames)
     ply_path = output_dir / "relative-depth-point-cloud.ply"
+    preview_path = output_dir / "relative-depth-topdown.png"
     summary_path = output_dir / "relative-depth-summary.json"
     write_ply(ply_path, points)
+    write_topdown_png(preview_path, points)
     summary = {
         "run_id": args.run_id,
         "depth_dir": str(depth_dir),
         "output": str(ply_path),
+        "preview": str(preview_path),
         "stride": args.stride,
         "max_frames": args.max_frames,
         **stats,
@@ -94,6 +97,30 @@ def write_ply(path: Path, points: np.ndarray) -> None:
         handle.write("end_header\n")
         for x, y, z, intensity in points:
             handle.write(f"{x:.6f} {y:.6f} {z:.6f} {intensity:.6f}\n")
+
+
+def write_topdown_png(path: Path, points: np.ndarray, size: int = 900) -> None:
+    import cv2
+
+    canvas = np.full((size, size, 3), 250, dtype=np.uint8)
+    if points.size == 0:
+        cv2.imwrite(str(path), canvas)
+        return
+
+    x = points[:, 0]
+    y = points[:, 1]
+    z = points[:, 2]
+    x_norm = (x - x.min()) / max(float(x.max() - x.min()), 1e-6)
+    y_norm = (y - y.min()) / max(float(y.max() - y.min()), 1e-6)
+    px = np.clip((x_norm * (size - 80) + 40).astype(np.int32), 0, size - 1)
+    py = np.clip(((1.0 - y_norm) * (size - 80) + 40).astype(np.int32), 0, size - 1)
+    colors = cv2.applyColorMap((np.clip(z, 0.0, 1.0) * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
+    for point_x, point_y, color in zip(px, py, colors, strict=False):
+        cv2.circle(canvas, (int(point_x), int(point_y)), 2, tuple(int(c) for c in color[0]), -1, lineType=cv2.LINE_AA)
+
+    cv2.rectangle(canvas, (30, 30), (size - 30, size - 30), (40, 40, 40), 1)
+    cv2.putText(canvas, "relative depth top-down", (40, size - 42), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (20, 20, 20), 2, cv2.LINE_AA)
+    cv2.imwrite(str(path), canvas)
 
 
 if __name__ == "__main__":
