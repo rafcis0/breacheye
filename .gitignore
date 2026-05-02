@@ -1,3 +1,7 @@
+# Secrets
+.env
+.env.local
+
 # Research reference material (local only, not committed)
 research/
 
