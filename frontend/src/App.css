@@ -14,12 +14,31 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  height: 52px;
+  /* height controlled by Tailwind h-12 (48px) in JSX */
   border-bottom: 1px solid var(--border);
   background: rgba(10, 10, 15, 0.95);
   backdrop-filter: blur(12px);
   flex-shrink: 0;
   z-index: 10;
+}
+
+/* ── Bottom bar ───────────────────────────────────────────── */
+
+.app__bottom-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-top: 1px solid var(--border);
+  background: rgba(10, 10, 15, 0.95);
+  backdrop-filter: blur(12px);
+  z-index: 10;
+}
+
+.app__bottom-placeholder {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
 }
 
 .app__header-left {
@@ -423,7 +442,7 @@
 /* ── Tactical Map ────────────────────────────────────────── */
 
 .tactical-map {
-  flex: 1;
+  height: 100%;
   min-height: 200px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
@@ -459,7 +478,7 @@
 }
 
 .map3d {
-  flex: 1;
+  height: 100%;
   min-height: 220px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
