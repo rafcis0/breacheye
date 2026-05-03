@@ -18,7 +18,7 @@ def test_navigation_safety_override_blocks_forward_when_depth_is_close(tmp_path,
         decision=NavigationDecision(
             action="move_forward",
             params={"speed_cm_s": 20},
-            confidence=0.91,
+            confidence=0.42,
             reasoning="open hallway ahead",
         ),
     )
@@ -42,6 +42,7 @@ def test_navigation_safety_override_blocks_forward_when_depth_is_close(tmp_path,
     assert search_events[-1]["reason"] == "scan_blocked_heading"
     assert search_events[-1]["node_id"] == 0
     assert search_events[-1]["heading_index"] == 0
+    assert guarded.decision.confidence >= 0.5
 
 
 def test_navigation_safety_override_allows_forward_when_frontier_is_clear(tmp_path, monkeypatch) -> None:
@@ -60,6 +61,29 @@ def test_navigation_safety_override_allows_forward_when_frontier_is_clear(tmp_pa
         frame_id=17,
         looking_at=LookingAt(direction_label="forward", nearest_obstacle_m=0.77),
         unexplored_frontiers=[MapFrontier(id="frontier-17", bearing_deg=0, label="open forward view")],
+    )
+
+    guarded = pipeline._apply_navigation_safety_override(output, context)
+
+    assert guarded == output
+
+
+def test_navigation_safety_override_allows_forward_when_depth_clear_without_frontier(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", "0.35")
+    pipeline = RafaPipeline(RafaPipelineConfig(log_dir=str(tmp_path), run_id="safety"))
+    output = NavigationOutput(
+        frame_id=18,
+        decision=NavigationDecision(
+            action="move_forward",
+            params={"speed_cm_s": 20},
+            confidence=0.9,
+            reasoning="open hallway",
+        ),
+    )
+    context = SpatialNavigationContext(
+        frame_id=18,
+        looking_at=LookingAt(direction_label="forward", nearest_obstacle_m=0.77),
+        unexplored_frontiers=[],
     )
 
     guarded = pipeline._apply_navigation_safety_override(output, context)

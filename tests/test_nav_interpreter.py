@@ -429,6 +429,37 @@ async def test_guard_lands_when_tof_drops_during_autonomy() -> None:
 
 
 @pytest.mark.asyncio
+async def test_guard_ignores_low_tof_when_height_is_consistently_safe() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "accepts_nav": True,
+                "telemetry": {
+                    "connected": True,
+                    "flying": True,
+                    "height_cm": 80,
+                    "raw": {"pitch": 0, "roll": 0, "tof": 31},
+                },
+                "stabilizer": {"last_estimate": {}},
+            }
+
+    class Client:
+        async def get(self, url):
+            return Response()
+
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+    interp._airborne_settle_s = 0.0
+    interp._drift_land_after = 1
+
+    guarded = await interp._guard_command_for_health(13, make_decision("hover"))
+
+    assert guarded is None
+
+
+@pytest.mark.asyncio
 async def test_post_command_raises_when_safety_rejects_command() -> None:
     class Response:
         status_code = 200

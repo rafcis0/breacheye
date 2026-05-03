@@ -10,7 +10,9 @@ from breacheye.flight import (
     _shutdown_emergency_reasons,
     _post_takeoff,
     _rafa_log_has_navigation,
+    _takeoff_stability_gate,
     _wait_for_accepts_nav,
+    _wait_for_first_frame,
     _wait_for_rafa_navigation,
     build_process_specs,
 )
@@ -240,6 +242,7 @@ def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> No
 
     monkeypatch.setattr("httpx.post", fake_post)
     monkeypatch.setattr("breacheye.flight._wait_for_flying", fake_wait_for_flying)
+    monkeypatch.setattr("breacheye.flight._takeoff_stability_gate", lambda _base_url: None)
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
 
     _post_takeoff("http://harness", climb_cm=100)
@@ -248,11 +251,162 @@ def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> No
     assert calls[1] == ("post", "http://harness/commands", {"type": "takeoff", "issued_by": "flight_launcher"}, 30.0)
     assert calls[2] == ("wait_for_flying", "http://harness", 5.0)
     climb_pulses = calls[3:]
-    assert len(climb_pulses) == 4
+    assert len(climb_pulses) == 5
     assert all(call[0] == "post" for call in climb_pulses)
     assert all(call[2]["type"] == "rc_control" for call in climb_pulses)
-    assert all(call[2]["payload"]["up_down"] == 30 for call in climb_pulses)
-    assert [call[2]["payload"]["duration_ms"] for call in climb_pulses] == [1000, 1000, 1000, 333]
+    assert all(call[2]["payload"]["up_down"] == 20 for call in climb_pulses)
+    assert [call[2]["payload"]["duration_ms"] for call in climb_pulses] == [1000, 1000, 1000, 1000, 1000]
+
+
+def test_auto_takeoff_starts_video_after_settle_and_climb(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        text = '{"status":"executed"}'
+
+        def json(self):
+            return {"status": "executed"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_post(url, json, timeout):
+        calls.append(("post", url, json, timeout))
+        return FakeResponse()
+
+    flying_checks = {"count": 0}
+
+    def fake_wait_for_flying(_base_url, timeout_s=5.0):
+        calls.append(("wait_for_flying", _base_url, timeout_s))
+        flying_checks["count"] += 1
+        return flying_checks["count"] > 1
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("breacheye.flight._wait_for_flying", fake_wait_for_flying)
+    monkeypatch.setattr("breacheye.flight._takeoff_stability_gate", lambda _base_url: None)
+    monkeypatch.setattr("time.sleep", lambda seconds: calls.append(("sleep", seconds)))
+
+    _post_takeoff("http://harness", climb_cm=20, after_takeoff=lambda: calls.append(("video_start",)))
+
+    assert ("sleep", 3.0) in calls
+    assert calls[-1] == ("video_start",)
+
+
+def test_takeoff_stability_gate_accepts_stable_samples(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "telemetry": {"flying": True},
+                "stabilizer": {
+                    "mode": "log",
+                    "running": True,
+                    "last_estimate": {
+                        "timestamp": 100.0,
+                        "median_dx_px": 0.5,
+                        "median_dy_px": -0.2,
+                        "median_radial_px": 0.1,
+                    },
+                },
+            }
+
+    def fake_get(url, timeout):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("time.time", lambda: 100.2)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    _takeoff_stability_gate("http://harness", prefix="[test]")
+
+    assert len(calls) == 2
+
+
+def test_takeoff_stability_gate_lands_on_repeated_drift(monkeypatch) -> None:
+    calls = []
+
+    class FakeGetResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "telemetry": {"flying": True},
+                "stabilizer": {
+                    "mode": "log",
+                    "running": True,
+                    "last_estimate": {
+                        "timestamp": 100.0,
+                        "median_dx_px": 5.2,
+                        "median_dy_px": 0.0,
+                        "median_radial_px": 0.0,
+                    },
+                },
+            }
+
+    class FakePostResponse:
+        text = '{"status":"executed"}'
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {"status": "executed"}
+
+    def fake_get(url, timeout):
+        calls.append(("get", url, timeout))
+        return FakeGetResponse()
+
+    def fake_post(url, json, timeout):
+        calls.append(("post", url, json["type"], timeout))
+        return FakePostResponse()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("time.time", lambda: 100.2)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="takeoff stability gate failed"):
+        _takeoff_stability_gate("http://harness", prefix="[test]")
+
+    assert calls[-2:] == [
+        ("post", "http://harness/commands", "hover", 5.0),
+        ("post", "http://harness/commands", "land", 30.0),
+    ]
+
+
+def test_wait_for_first_frame_requires_full_size(monkeypatch) -> None:
+    import cv2
+    import numpy as np
+
+    def jpeg(width: int, height: int) -> bytes:
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        ok, encoded = cv2.imencode(".jpg", image)
+        assert ok
+        return encoded.tobytes()
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+    responses = [FakeResponse(jpeg(400, 300)), FakeResponse(jpeg(960, 720))]
+    calls = []
+
+    def fake_get(url, timeout):
+        calls.append((url, timeout))
+        return responses.pop(0)
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    _wait_for_first_frame("http://harness", timeout_s=1.0)
+
+    assert len(calls) == 2
 
 
 def test_post_command_checked_raises_on_failed_body(monkeypatch) -> None:

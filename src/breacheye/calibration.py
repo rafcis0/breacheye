@@ -22,7 +22,7 @@ import termios
 import threading
 import tty
 from dataclasses import dataclass
-from time import monotonic
+from time import sleep
 
 import httpx
 
@@ -42,6 +42,10 @@ class CalibConfig:
     circle_steps: int = 18        # steps per full circle (~18s)
     step_duration_ms: int = 1000  # duration of each RC sub-step
     enable_flip: bool = True      # attempt flip if battery allows
+    takeoff_climb_cm: int = 60
+    min_battery: int = 30
+    allow_hover_trim: bool = False
+    confirm_each: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +185,43 @@ def _abort(msg: str) -> None:
     sys.exit(1)
 
 
+def _assert_safe_health(health: dict, *, cfg: CalibConfig, require_flying: bool, action: str) -> None:
+    telemetry = health.get("telemetry", {})
+    battery = telemetry.get("battery")
+    connected = telemetry.get("connected")
+    flying = telemetry.get("flying")
+    if connected is not True:
+        _abort(f"{action}: drone is not connected: {_health_summary(health)}")
+    if require_flying and flying is not True:
+        _abort(f"{action}: drone is not flying: {_health_summary(health)}")
+    if battery is None:
+        _abort(f"{action}: battery telemetry unavailable: {_health_summary(health)}")
+    if battery < cfg.min_battery:
+        _abort(
+            f"{action}: battery {battery}% is below calibration minimum "
+            f"{cfg.min_battery}%: {_health_summary(health)}"
+        )
+    if not cfg.allow_hover_trim and _has_non_neutral_hover_trim(health):
+        _abort(
+            f"{action}: hover trim is enabled; disable trim or pass --allow-hover-trim: "
+            f"{_health_summary(health)}"
+        )
+
+
+def _has_non_neutral_hover_trim(health: dict) -> bool:
+    adapter = health.get("adapter") or {}
+    if adapter.get("hover_trim_enabled") is not True:
+        return False
+    trim = adapter.get("hover_trim") or {}
+    for key in ("left_right", "forward_back", "up_down", "yaw"):
+        try:
+            if int(trim.get(key) or 0) != 0:
+                return True
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Console helpers
 # ---------------------------------------------------------------------------
@@ -196,6 +237,14 @@ def _print_header(text: str) -> None:
 
 def _print_error(msg: str) -> None:
     print(f"[ERROR] {msg}", file=sys.stderr)
+
+
+def _confirm(cfg: CalibConfig, label: str) -> None:
+    if not cfg.confirm_each:
+        return
+    if not sys.stdin.isatty():
+        return
+    input(f"\nPress Enter to run {label} (SPACE remains emergency once airborne)...")
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +280,32 @@ def _run_maneuver(
         else:
             print(f"  step {step_num}/{n_steps} ✗  ({reason})")
             fail_count += 1
+            fail_count += n_steps - i - 1
+            break
     return ok_count, fail_count
+
+
+def _climb_after_takeoff(client: httpx.Client, base_url: str, cfg: CalibConfig) -> None:
+    remaining_cm = max(0, min(150, int(cfg.takeoff_climb_cm)))
+    speed_cm_s = 20
+    pulse_cm = 20
+    index = 0
+    while remaining_cm > 0:
+        index += 1
+        current_cm = min(pulse_cm, remaining_cm)
+        duration_ms = max(300, min(1000, int(current_cm / speed_cm_s * 1000)))
+        print(f"  climb pulse {index}: {current_cm}cm/{cfg.takeoff_climb_cm}cm")
+        cmd = DroneCommand(
+            type=CommandType.RC_CONTROL,
+            issued_by="calibration",
+            ttl_ms=duration_ms + 200,
+            payload=RCControlPayload(duration_ms=duration_ms, up_down=speed_cm_s),
+        )
+        ok, reason = _post_command(client, base_url, cmd)
+        if not ok:
+            _abort(f"takeoff climb failed: {reason}")
+        remaining_cm -= current_cm
+        sleep(0.25)
 
 
 # ---------------------------------------------------------------------------
@@ -287,19 +361,24 @@ def run_calibration(
     print(f"  battery:   {battery}%")
     print(f"  health:    {_health_summary(health)}")
 
-    if not connected:
-        _abort("drone is not connected — start the harness in tello mode first")
-
     if mode != "tello":
         print(f"\n[WARN] harness is in '{mode}' mode, not 'tello'. Commands will run but no physical motion will occur.")
+    _assert_safe_health(health, cfg=cfg, require_flying=False, action="preflight")
 
     # --- Takeoff ---
     _print_header("TAKEOFF")
+    _confirm(cfg, "takeoff")
     takeoff_cmd = DroneCommand(type=CommandType.TAKEOFF, issued_by="calibration")
     ok, reason = _post_command(client, base_url, takeoff_cmd)
     if not ok:
         _abort(f"takeoff failed: {reason}")
     print("Takeoff executed.")
+
+    post_takeoff = _health_check(client, base_url)
+    _assert_safe_health(post_takeoff, cfg=cfg, require_flying=True, action="post-takeoff")
+    _post_command(client, base_url, DroneCommand(type=CommandType.HOVER, issued_by="calibration"))
+    if cfg.takeoff_climb_cm > 0:
+        _climb_after_takeoff(client, base_url, cfg)
 
     step_ms = cfg.step_duration_ms
 
@@ -309,8 +388,10 @@ def run_calibration(
     print("\n  Controls: SPACE = emergency land | SPACE×2 = kill motors\n")
 
     try:
+        sequence_failed = False
         # --- Rotation left ---
-        if not keys.should_abort:
+        if not keys.should_abort and not sequence_failed:
+            _confirm(cfg, "rotation_left")
             print("[ROTATION LEFT]  360° yaw left...")
 
             def _rot_left(_i):
@@ -324,9 +405,11 @@ def run_calibration(
             ok_n, fail_n = _run_maneuver(client, base_url, "rotation_left", cfg.rotation_steps, _rot_left, keys)
             print(f"  Done: {ok_n}/{cfg.rotation_steps}")
             results.append(("rotation_left", ok_n, cfg.rotation_steps))
+            sequence_failed = fail_n > 0
 
         # --- Rotation right ---
-        if not keys.should_abort:
+        if not keys.should_abort and not sequence_failed:
+            _confirm(cfg, "rotation_right")
             print("\n[ROTATION RIGHT] 360° yaw right...")
 
             def _rot_right(_i):
@@ -340,9 +423,11 @@ def run_calibration(
             ok_n, fail_n = _run_maneuver(client, base_url, "rotation_right", cfg.rotation_steps, _rot_right, keys)
             print(f"  Done: {ok_n}/{cfg.rotation_steps}")
             results.append(("rotation_right", ok_n, cfg.rotation_steps))
+            sequence_failed = fail_n > 0
 
         # --- Circle left ---
-        if not keys.should_abort:
+        if not keys.should_abort and not sequence_failed:
+            _confirm(cfg, "circle_left")
             print("\n[CIRCLE LEFT]    3ft radius circle left...")
 
             def _circle_left(_i):
@@ -360,9 +445,11 @@ def run_calibration(
             ok_n, fail_n = _run_maneuver(client, base_url, "circle_left", cfg.circle_steps, _circle_left, keys)
             print(f"  Done: {ok_n}/{cfg.circle_steps}")
             results.append(("circle_left", ok_n, cfg.circle_steps))
+            sequence_failed = fail_n > 0
 
         # --- Circle right ---
-        if not keys.should_abort:
+        if not keys.should_abort and not sequence_failed:
+            _confirm(cfg, "circle_right")
             print("\n[CIRCLE RIGHT]   3ft radius circle right...")
 
             def _circle_right(_i):
@@ -380,9 +467,11 @@ def run_calibration(
             ok_n, fail_n = _run_maneuver(client, base_url, "circle_right", cfg.circle_steps, _circle_right, keys)
             print(f"  Done: {ok_n}/{cfg.circle_steps}")
             results.append(("circle_right", ok_n, cfg.circle_steps))
+            sequence_failed = fail_n > 0
 
         # --- Flip ---
-        if not keys.should_abort and cfg.enable_flip:
+        if not keys.should_abort and not sequence_failed and cfg.enable_flip:
+            _confirm(cfg, "flip")
             print("\n[FLIP]           forward flip...")
             if battery is not None and battery < 50:
                 print(f"  skipped — battery {battery}% < 50%")
@@ -404,6 +493,7 @@ def run_calibration(
         # --- Land ---
         if not keys.is_emergency:
             _print_header("LAND")
+            _confirm(cfg, "land")
             land_cmd = DroneCommand(type=CommandType.LAND, issued_by="calibration")
             ok, reason = _post_command(client, base_url, land_cmd)
             if ok:
@@ -514,6 +604,10 @@ def main(argv: list[str] | None = None) -> None:
         circle_steps=args.circle_steps,
         step_duration_ms=args.step_ms,
         enable_flip=not args.no_flip,
+        takeoff_climb_cm=args.takeoff_climb_cm,
+        min_battery=args.min_battery,
+        allow_hover_trim=args.allow_hover_trim,
+        confirm_each=not args.yes,
     )
     exit_code = run_calibration(
         base_url=args.harness_url,

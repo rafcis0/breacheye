@@ -419,8 +419,9 @@ class NavInterpreter:
         reasons: list[str] = []
         raw = telemetry.get("raw") or {}
         tof = _float_or_none(raw.get("tof"))
-        if tof is not None and tof < self._drift_min_tof_cm:
-            reasons.append(f"tof={tof:g}cm<{self._drift_min_tof_cm}cm")
+        height_cm = _float_or_none(telemetry.get("height_cm"))
+        if _is_low_altitude(tof, height_cm, self._drift_min_tof_cm):
+            reasons.append(_low_altitude_reason(tof, height_cm, self._drift_min_tof_cm))
 
         stabilizer = health.get("stabilizer") or {}
         estimate = stabilizer.get("last_estimate") or {}
@@ -602,3 +603,15 @@ def _float_or_none(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _is_low_altitude(tof_cm: float | None, height_cm: float | None, threshold_cm: float) -> bool:
+    if tof_cm is None or tof_cm >= threshold_cm:
+        return False
+    return height_cm is None or height_cm < threshold_cm
+
+
+def _low_altitude_reason(tof_cm: float | None, height_cm: float | None, threshold_cm: float) -> str:
+    if height_cm is None:
+        return f"tof={tof_cm:g}cm<{threshold_cm:g}cm"
+    return f"tof={tof_cm:g}cm height={height_cm:g}cm<{threshold_cm:g}cm"

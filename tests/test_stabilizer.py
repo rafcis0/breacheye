@@ -6,12 +6,15 @@ import pytest
 
 from breacheye.adapters.sim import SimAdapter
 from breacheye.bus import AsyncEventBus
-from breacheye.models import CommandType, DroneCommand
+from breacheye.models import CommandType, DroneCommand, DroneTelemetry
 from breacheye.safety import SafetyController
 from breacheye.stabilizer import (
     FlightStabilizer,
+    MotionEstimate,
     StabilizerConfig,
     _left_right_correction,
+    _safety_guard_reasons,
+    _telemetry_guard,
     estimate_motion,
 )
 from breacheye.video import FrameStore, encode_jpeg
@@ -62,6 +65,27 @@ def test_estimate_motion_detects_radial_image_contraction() -> None:
 
     assert estimate.tracked_features >= 4
     assert estimate.median_radial_px < -1.0
+
+
+def test_stabilizer_ignores_contradictory_low_tof_when_height_is_safe() -> None:
+    telemetry = DroneTelemetry(
+        connected=True,
+        flying=True,
+        height_cm=80,
+        raw={"tof": 31, "pitch": 0, "roll": 0},
+    )
+    config = StabilizerConfig(mode="log", min_height_cm=35, safety_min_tof_cm=60)
+    estimate = MotionEstimate(
+        median_dx_px=0.0,
+        median_dy_px=0.0,
+        median_radial_px=0.0,
+        tracked_features=40,
+        frame_width=160,
+        frame_height=120,
+    )
+
+    assert _telemetry_guard(telemetry, config) is None
+    assert _safety_guard_reasons(telemetry, estimate, config) == []
 
 
 @pytest.mark.asyncio

@@ -265,6 +265,10 @@ def main() -> None:
             circle_steps=args.circle_steps,
             step_duration_ms=args.step_ms,
             enable_flip=not args.no_flip,
+            takeoff_climb_cm=args.takeoff_climb_cm,
+            min_battery=args.min_battery,
+            allow_hover_trim=args.allow_hover_trim,
+            confirm_each=not args.yes,
         )
         raise SystemExit(
             run_calibration(

@@ -372,8 +372,9 @@ def _safety_guard_reasons(
         reasons.append(f"image_radial_{direction}={estimate.median_radial_px:.1f}px")
     raw = telemetry.raw or {}
     tof = _float_or_none(raw.get("tof"))
-    if tof is not None and tof < config.safety_min_tof_cm:
-        reasons.append(f"tof={tof:g}cm<{config.safety_min_tof_cm}cm")
+    height_cm = _float_or_none(telemetry.height_cm)
+    if _is_low_altitude(tof, height_cm, config.safety_min_tof_cm):
+        reasons.append(_low_altitude_reason(tof, height_cm, config.safety_min_tof_cm))
     return reasons
 
 
@@ -392,7 +393,7 @@ def _telemetry_guard(telemetry: DroneTelemetry, config: StabilizerConfig) -> str
         return f"pitch_guard:{pitch:g}"
     if roll is not None and abs(roll) > config.max_attitude_deg:
         return f"roll_guard:{roll:g}"
-    if tof is not None and tof <= config.min_height_cm:
+    if _is_low_altitude(tof, _float_or_none(telemetry.height_cm), config.min_height_cm):
         return f"tof_too_low:{tof:g}"
     if tof is not None and tof > config.max_tof_cm:
         return f"tof_out_of_range:{tof:g}"
@@ -406,6 +407,18 @@ def _float_or_none(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _is_low_altitude(tof_cm: float | None, height_cm: float | None, threshold_cm: float) -> bool:
+    if tof_cm is None or tof_cm >= threshold_cm:
+        return False
+    return height_cm is None or height_cm < threshold_cm
+
+
+def _low_altitude_reason(tof_cm: float | None, height_cm: float | None, threshold_cm: float) -> str:
+    if height_cm is None:
+        return f"tof={tof_cm:g}cm<{threshold_cm:g}cm"
+    return f"tof={tof_cm:g}cm height={height_cm:g}cm<{threshold_cm:g}cm"
 
 
 def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:

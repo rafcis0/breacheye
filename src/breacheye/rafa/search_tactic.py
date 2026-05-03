@@ -24,6 +24,7 @@ class NodeSearchTactic:
 
     clearance_threshold: float
     scan_degrees: int = 20
+    override_confidence: float = 0.55
     node_id: int = 0
     heading_index: int = 0
     heading_status: dict[int, str] = field(default_factory=dict)
@@ -61,7 +62,7 @@ class NodeSearchTactic:
                 decision=NavigationDecision(
                     action="rotate_right",
                     params={"degrees": self.scan_degrees},
-                    confidence=min(decision.confidence, 0.7),
+                    confidence=max(min(decision.confidence, 0.7), self.override_confidence),
                     reasoning=(
                         "Node search: current heading is blocked; rotating to sample the next heading. "
                         f"Requested {decision.action}: {decision.reasoning}"
@@ -106,8 +107,7 @@ class NodeSearchTactic:
     def _is_blocked(self, context: SpatialNavigationContext) -> bool:
         nearest = context.looking_at.nearest_obstacle_m
         blocked_by_depth = nearest is not None and nearest <= self.clearance_threshold
-        no_forward_frontier = not context.unexplored_frontiers
-        return blocked_by_depth or no_forward_frontier
+        return blocked_by_depth
 
     def _advance_heading(self, delta: int) -> None:
         self.heading_index = (self.heading_index + delta) % max(1, round(360 / self.scan_degrees))

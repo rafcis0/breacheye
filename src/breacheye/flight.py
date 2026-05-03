@@ -315,6 +315,7 @@ def _post_takeoff(
     base_url: str,
     climb_cm: int = 100,
     after_takeoff: Callable[[], None] | None = None,
+    settle_s: float | None = None,
 ) -> None:
     if _wait_for_flying(base_url, timeout_s=0.1):
         print("[flight] drone already reports flying; skipping takeoff command", flush=True)
@@ -327,22 +328,30 @@ def _post_takeoff(
         {"type": "takeoff", "issued_by": "flight_launcher"},
         label="takeoff",
     )
-    if after_takeoff is not None:
-        after_takeoff()
 
     climb_cm = max(0, min(150, int(climb_cm)))
     if climb_cm <= 0:
+        _settle_after_takeoff(settle_s)
+        if after_takeoff is not None:
+            after_takeoff()
         return
     if not _wait_for_flying(base_url):
         print("[flight] skipping takeoff climb; harness did not report flying", flush=True)
+        if after_takeoff is not None:
+            after_takeoff()
         return
 
-    speed_cm_s = 30
+    _settle_after_takeoff(settle_s)
+    _takeoff_stability_gate(base_url)
+
+    speed_cm_s = _env_int("BREACHEYE_TAKEOFF_CLIMB_SPEED_CM_S", 20, minimum=5, maximum=30)
+    pulse_cap_cm = _env_int("BREACHEYE_TAKEOFF_CLIMB_PULSE_CM", 20, minimum=5, maximum=30)
+    rest_s = _env_float("BREACHEYE_TAKEOFF_CLIMB_REST_S", 0.35, minimum=0.0, maximum=2.0)
     remaining_cm = climb_cm
     pulse_index = 0
     while remaining_cm > 0:
         pulse_index += 1
-        pulse_cm = min(30, remaining_cm)
+        pulse_cm = min(pulse_cap_cm, remaining_cm)
         duration_ms = max(300, min(1000, int(pulse_cm / speed_cm_s * 1000)))
         _post_command_checked(
             base_url,
@@ -355,7 +364,155 @@ def _post_takeoff(
             label=f"takeoff climb pulse {pulse_index} {pulse_cm}cm/{climb_cm}cm",
         )
         remaining_cm -= pulse_cm
-        time.sleep(0.15)
+        time.sleep(rest_s)
+
+    _takeoff_stability_gate(base_url)
+
+    if after_takeoff is not None:
+        after_takeoff()
+
+
+def _settle_after_takeoff(settle_s: float | None = None) -> None:
+    if settle_s is None:
+        settle_s = _env_float("BREACHEYE_TAKEOFF_SETTLE_S", 3.0, minimum=0.0, maximum=10.0)
+    settle_s = max(0.0, min(10.0, float(settle_s)))
+    if settle_s <= 0:
+        return
+    print(f"[flight] takeoff settle {settle_s:.1f}s before climb/video", flush=True)
+    time.sleep(settle_s)
+
+
+def _takeoff_stability_gate(base_url: str, *, prefix: str = "[flight]") -> None:
+    if not _env_bool("BREACHEYE_TAKEOFF_STABILITY_GATE", True):
+        print(f"{prefix} takeoff stability gate disabled", flush=True)
+        return
+
+    import httpx
+
+    timeout_s = _env_float("BREACHEYE_TAKEOFF_STABILITY_TIMEOUT_S", 5.0, minimum=0.5, maximum=20.0)
+    sample_s = _env_float("BREACHEYE_TAKEOFF_STABILITY_SAMPLE_S", 0.5, minimum=0.1, maximum=2.0)
+    max_age_s = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_AGE_S", 1.5, minimum=0.1, maximum=10.0)
+    max_dx_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_DX_PX", 4.0, minimum=0.1, maximum=80.0)
+    max_dy_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_DY_PX", 6.0, minimum=0.1, maximum=80.0)
+    max_radial_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_RADIAL_PX", 2.0, minimum=0.1, maximum=80.0)
+    required_samples = _env_int("BREACHEYE_TAKEOFF_STABILITY_REQUIRED_SAMPLES", 2, minimum=1, maximum=10)
+    max_unstable_samples = _env_int("BREACHEYE_TAKEOFF_STABILITY_MAX_UNSTABLE_SAMPLES", 2, minimum=1, maximum=10)
+    deadline = time.monotonic() + timeout_s
+    stable_samples = 0
+    unstable_samples = 0
+    last_summary = "no stabilizer estimate"
+
+    print(
+        f"{prefix} waiting for stable takeoff hover "
+        f"(dx<={max_dx_px:g}px dy<={max_dy_px:g}px radial<={max_radial_px:g}px)",
+        flush=True,
+    )
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.get(f"{base_url}/health", timeout=1.0)
+            if response.status_code != 200:
+                last_summary = f"health status={response.status_code}"
+                time.sleep(sample_s)
+                continue
+            health = response.json()
+        except Exception as exc:
+            last_summary = f"health error: {exc}"
+            time.sleep(sample_s)
+            continue
+
+        telemetry = health.get("telemetry", {})
+        if telemetry.get("flying") is not True:
+            raise RuntimeError(
+                f"takeoff stability gate failed: drone is not flying "
+                f"({_health_summary_from_telemetry(telemetry)})"
+            )
+
+        stabilizer = health.get("stabilizer") or {}
+        mode = stabilizer.get("mode")
+        if mode == "off":
+            print(f"{prefix} takeoff stability gate skipped; stabilizer is off", flush=True)
+            return
+        estimate = stabilizer.get("last_estimate") or {}
+        sample = _fresh_stabilizer_sample(estimate, max_age_s=max_age_s)
+        if sample is None:
+            last_summary = _stabilizer_wait_summary(stabilizer, estimate)
+            time.sleep(sample_s)
+            continue
+
+        dx, dy, radial = sample
+        last_summary = f"dx={dx:.1f}px dy={dy:.1f}px radial={radial:.1f}px"
+        reasons = []
+        if abs(dx) > max_dx_px:
+            reasons.append(f"dx={dx:.1f}px>{max_dx_px:g}px")
+        if abs(dy) > max_dy_px:
+            reasons.append(f"dy={dy:.1f}px>{max_dy_px:g}px")
+        if abs(radial) > max_radial_px:
+            reasons.append(f"radial={radial:.1f}px>{max_radial_px:g}px")
+
+        if reasons:
+            stable_samples = 0
+            unstable_samples += 1
+            print(
+                f"{prefix} takeoff stability drift sample {unstable_samples}/{max_unstable_samples}: "
+                f"{', '.join(reasons)}",
+                flush=True,
+            )
+            if unstable_samples >= max_unstable_samples:
+                _land_after_takeoff_stability_failure(base_url, prefix=prefix, reason=last_summary)
+                raise RuntimeError(f"takeoff stability gate failed: {last_summary}")
+        else:
+            unstable_samples = 0
+            stable_samples += 1
+            print(
+                f"{prefix} takeoff stability sample {stable_samples}/{required_samples}: {last_summary}",
+                flush=True,
+            )
+            if stable_samples >= required_samples:
+                print(f"{prefix} takeoff stability accepted: {last_summary}", flush=True)
+                return
+        time.sleep(sample_s)
+
+    _land_after_takeoff_stability_failure(base_url, prefix=prefix, reason=last_summary)
+    raise RuntimeError(f"takeoff stability gate timed out: {last_summary}")
+
+
+def _fresh_stabilizer_sample(estimate: dict, *, max_age_s: float) -> tuple[float, float, float] | None:
+    if not estimate:
+        return None
+    timestamp = _float_or_none(estimate.get("timestamp"))
+    if timestamp is None or time.time() - timestamp > max_age_s:
+        return None
+    dx = _float_or_none(estimate.get("median_dx_px"))
+    dy = _float_or_none(estimate.get("median_dy_px"))
+    radial = _float_or_none(estimate.get("median_radial_px"))
+    if dx is None or dy is None or radial is None:
+        return None
+    return dx, dy, radial
+
+
+def _stabilizer_wait_summary(stabilizer: dict, estimate: dict) -> str:
+    mode = stabilizer.get("mode")
+    running = stabilizer.get("running")
+    skip = stabilizer.get("last_skip_reason")
+    if not estimate:
+        return f"mode={mode} running={running} last_skip={skip or 'none'}"
+    timestamp = _float_or_none(estimate.get("timestamp"))
+    age = None if timestamp is None else time.time() - timestamp
+    age_text = "unknown" if age is None else f"{age:.1f}s"
+    return f"mode={mode} running={running} stale_estimate_age={age_text} last_skip={skip or 'none'}"
+
+
+def _land_after_takeoff_stability_failure(base_url: str, *, prefix: str, reason: str) -> None:
+    print(f"{prefix} takeoff stability failed; landing before autonomous nav ({reason})", flush=True)
+    for command_type in ("hover", "land"):
+        try:
+            _post_command_checked(
+                base_url,
+                {"type": command_type, "issued_by": "flight_launcher_takeoff_stability_gate"},
+                label=f"takeoff stability {command_type}",
+            )
+        except Exception as exc:
+            print(f"{prefix} takeoff stability {command_type} failed: {exc}", flush=True)
 
 
 def _start_harness_video(base_url: str, *, prefix: str) -> None:
@@ -367,20 +524,52 @@ def _start_harness_video(base_url: str, *, prefix: str) -> None:
 
 
 def _wait_for_first_frame(base_url: str, *, timeout_s: float = 15.0, prefix: str = "") -> None:
-    """Poll /frame/latest until we get a 200 response with content."""
+    """Poll /frame/latest until the harness has a full-size Tello video frame."""
     import httpx
 
+    min_width = _env_int("BREACHEYE_FIRST_FRAME_MIN_WIDTH", 900, minimum=1, maximum=1920)
+    min_height = _env_int("BREACHEYE_FIRST_FRAME_MIN_HEIGHT", 650, minimum=1, maximum=1080)
     deadline = time.monotonic() + timeout_s
+    last_summary = "none"
     while time.monotonic() < deadline:
         try:
             resp = httpx.get(f"{base_url}/frame/latest", timeout=2.0)
             if resp.status_code == 200 and len(resp.content) > 1000:
-                print(f"{prefix} first frame ready ({len(resp.content)} bytes)", flush=True)
-                return
-        except httpx.HTTPError:
-            pass
+                size = _jpeg_dimensions(resp.content)
+                if size is not None:
+                    width, height = size
+                    last_summary = f"{width}x{height}, {len(resp.content)} bytes"
+                    if width >= min_width and height >= min_height:
+                        print(f"{prefix} first frame ready ({last_summary})", flush=True)
+                        return
+                else:
+                    last_summary = f"undecodable, {len(resp.content)} bytes"
+            elif resp.status_code == 200:
+                last_summary = f"too small, {len(resp.content)} bytes"
+            else:
+                last_summary = f"status={resp.status_code}"
+        except httpx.HTTPError as exc:
+            last_summary = str(exc)
         time.sleep(0.3)
-    print(f"{prefix} WARNING: timed out waiting for first frame after {timeout_s}s", flush=True)
+    print(
+        f"{prefix} WARNING: timed out waiting for first frame after {timeout_s}s "
+        f"(last={last_summary})",
+        flush=True,
+    )
+
+
+def _jpeg_dimensions(content: bytes) -> tuple[int, int] | None:
+    try:
+        import cv2
+        import numpy as np
+
+        image = cv2.imdecode(np.frombuffer(content, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            return None
+        height, width = image.shape[:2]
+        return int(width), int(height)
+    except Exception:
+        return None
 
 
 def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
@@ -861,6 +1050,21 @@ def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _stop_processes(procs: Sequence[tuple[str, subprocess.Popen]]) -> None:
