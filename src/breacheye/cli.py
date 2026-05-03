@@ -82,6 +82,44 @@ def main() -> None:
     )
     fly.add_argument("--duration-s", type=float, help="Stop the launched loop after this many seconds.")
 
+    calibrate = subparsers.add_parser(
+        "calibrate",
+        help="Live hardware calibration: fly each NavigationAction and verify physical motion.",
+    )
+    calibrate.add_argument(
+        "--harness-url",
+        default="http://127.0.0.1:8000",
+        help="Base URL of the running harness (default: http://127.0.0.1:8000)",
+    )
+    calibrate.add_argument(
+        "--observe-s",
+        type=float,
+        default=3.0,
+        metavar="SECONDS",
+        help="Seconds to pause after each command for visual observation (default: 3)",
+    )
+    calibrate.add_argument(
+        "--speed",
+        type=int,
+        default=25,
+        metavar="CM_S",
+        help="Movement speed in cm/s, 1-35 (default: 25)",
+    )
+    calibrate.add_argument(
+        "--distance-cm",
+        type=int,
+        default=35,
+        metavar="CM",
+        help="Translation distance in cm (default: 35)",
+    )
+    calibrate.add_argument(
+        "--degrees",
+        type=int,
+        default=45,
+        metavar="DEG",
+        help="Rotation angle in degrees (default: 45)",
+    )
+
     demo = subparsers.add_parser("demo", help="Launch live, recorded, or mock demo stack.")
     demo.add_argument("--mode", choices=["live", "recorded", "mock"], default="live",
                       help="Demo mode (default: live)")
@@ -147,6 +185,21 @@ def main() -> None:
                 auto_takeoff=args.auto_takeoff,
                 takeoff_climb_cm=args.takeoff_climb_cm,
                 duration_s=args.duration_s,
+            )
+        )
+    elif args.command == "calibrate":
+        from breacheye.calibration import CalibConfig, run_calibration
+
+        cfg = CalibConfig(
+            speed=args.speed,
+            distance_cm=args.distance_cm,
+            degrees=args.degrees,
+        )
+        raise SystemExit(
+            run_calibration(
+                base_url=args.harness_url,
+                observe_s=args.observe_s,
+                cfg=cfg,
             )
         )
     elif args.command == "demo":

@@ -246,18 +246,6 @@ class NavInterpreter:
     async def _guard_command_for_health(self, frame_id: int, decision: NavigationDecision):
         health = await self._get_health_payload()
         telemetry = health.get("telemetry", {}) if health else {}
-        if telemetry.get("connected") is True and telemetry.get("flying") is False:
-            self._forward_streak = 0
-            self._hover_streak = 0
-            self._first_airborne_at = None
-            self.logger.event(
-                "navigation_skipped_grounded",
-                frame_id=frame_id,
-                action=decision.action,
-                confidence=decision.confidence,
-            )
-            return _GUARD_SKIP
-
         if telemetry.get("flying") is not True:
             return None
 
@@ -345,13 +333,6 @@ class NavInterpreter:
         if payload:
             return payload.get("telemetry", {}).get("battery")
         return None
-
-    async def _is_grounded(self) -> bool:
-        payload = await self._get_health_payload()
-        if payload:
-            telemetry = payload.get("telemetry", {})
-            return telemetry.get("connected") is True and telemetry.get("flying") is False
-        return False
 
     async def _get_health_payload(self) -> dict | None:
         assert self._client is not None, "call start() before _get_health_payload()"
