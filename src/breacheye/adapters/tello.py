@@ -67,10 +67,9 @@ class TelloAdapter(DroneAdapter):
         )
 
     async def keepalive(self) -> None:
-        if self._tello is not None and hasattr(self._tello, "send_keepalive"):
-            await self._call("send_keepalive")
-        else:
-            await self.hover()
+        # Some Tello firmware responds `unknown command: keepalive`; neutral RC
+        # is accepted by SDK mode and also holds position while flying.
+        await self.hover()
 
     async def get_state(self) -> DroneState:
         if self._tello is None:

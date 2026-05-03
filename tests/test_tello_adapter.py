@@ -80,6 +80,7 @@ async def test_commands_dispatch_to_sdk(fake_tello) -> None:
     await adapter.land()
     await adapter.emergency()
     await adapter.rc_control(1, 2, 3, 4)
+    await adapter.keepalive()
     await adapter.start_video()
     await adapter.stop_video()
 
@@ -89,6 +90,7 @@ async def test_commands_dispatch_to_sdk(fake_tello) -> None:
         ("land", ()),
         ("emergency", ()),
         ("send_rc_control", (1, 2, 3, 4)),
+        ("send_rc_control", (0, 0, 0, 0)),
         ("streamon", ()),
         ("streamoff", ()),
     ]
