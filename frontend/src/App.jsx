@@ -34,17 +34,17 @@ export default function App() {
           {/* Zone B — right sidebar: controls (fixed) + tactical map (flex) */}
           <aside className="w-[320px] flex flex-col flex-shrink-0 p-4 pl-0 gap-3">
             {/* Flight controls — fixed height content */}
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 glass-panel overflow-hidden">
               <FlightControls />
             </div>
 
             {/* Tactical Map — flex-1 fills remaining space */}
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 glass-panel overflow-hidden">
               <TacticalMap />
             </div>
 
             {/* 3D Map */}
-            <div className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 glass-panel overflow-hidden">
               <Map3D />
             </div>
           </aside>
