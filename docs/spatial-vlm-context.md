@@ -51,7 +51,7 @@ Initial schema:
 
 The pipeline now logs `navigation_context_built` before every navigation decision. In the current implementation the context source is `stub_from_current_frame`: it summarizes current-frame detections, relative center-depth, and recent accepted actions. Pose is marked `unavailable` until VGGT-MPS or a later reconstruction backend is wired in.
 
-Current depth gating is relative, not metric. `nearest_obstacle_m` is the center-band median from the normalized Depth Anything output. The practical block threshold is `BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M` and defaults to `0.45`; increasing it makes the drone rotate sooner, decreasing it allows tighter forward views.
+Current depth gating is relative, not metric. `nearest_obstacle_m` is the forward-clearance score from normalized Depth Anything output after conversion to `relative_0_near_1_far`. It combines the center median with a lower-forward near percentile so objects in the flight corridor can close the frontier. The practical block threshold is `BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M` and defaults to `0.45`; increasing it makes the drone rotate sooner, decreasing it allows tighter forward views.
 
 Until real SLAM pose/frontiers exist, Rafa uses a lightweight node-search tactic:
 

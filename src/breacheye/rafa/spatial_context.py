@@ -80,16 +80,25 @@ def _nearest_center_depth(depth: DepthOutput | None) -> float | None:
 
         values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
         height, width = values.shape
-        band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
-        if not band.size:
+        center_band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
+        lower_forward = values[
+            int(height * 0.45) : int(height * 0.9),
+            int(width * 0.25) : int(width * 0.75),
+        ]
+        if not center_band.size and not lower_forward.size:
             return None
-        finite = band[np.isfinite(band)]
-        if not finite.size:
+        scores = []
+        center_finite = center_band[np.isfinite(center_band)]
+        if center_finite.size:
+            scores.append(float(np.nanpercentile(center_finite, 50)))
+        lower_finite = lower_forward[np.isfinite(lower_forward)]
+        if lower_finite.size:
+            scores.append(float(np.nanpercentile(lower_finite, 20)))
+        if not scores:
             return None
-        # Depth Anything output is relative, so this is a normalized proximity hint, not meters.
-        # Use the center-band median instead of the absolute minimum so noisy pixels or a
-        # small near object do not incorrectly close an otherwise open forward frontier.
-        return float(np.nanpercentile(finite, 50))
+        # This is a normalized forward-clearance hint, not metric depth. The
+        # lower-forward band catches close objects in the actual flight path.
+        return min(scores)
     except Exception:
         return None
 

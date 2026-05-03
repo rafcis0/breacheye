@@ -325,6 +325,16 @@ class RafaPipeline:
             summary=summarize_spatial_context(context),
             context=context.model_dump(mode="json"),
         )
+        self.logger.event(
+            "navigation_model_input",
+            frame_id=frame_meta.frame_id,
+            image_path=self.logger.artifact_dir / "frames" / f"frame-{frame_meta.frame_id:08d}.jpg",
+            detections_count=len(detection.detections),
+            depth_available=depth is not None,
+            depth_shape=depth.shape if depth is not None else None,
+            context_summary=summarize_spatial_context(context),
+            context=context.model_dump(mode="json"),
+        )
         try:
             output = await self.navigator.decide(frame, frame_meta, detection, depth)
             validated = NavigationOutput.model_validate(output.model_dump())

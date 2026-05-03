@@ -72,3 +72,20 @@ def test_latest_point_cloud_returns_run_artifact(monkeypatch, tmp_path) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"points": []}
+
+
+def test_latest_depth_map_returns_run_artifact(monkeypatch, tmp_path) -> None:
+    run_id = "depth-test"
+    out = tmp_path / run_id / "rafa" / "depth"
+    out.mkdir(parents=True)
+    png_bytes = b"\x89PNG\r\n\x1a\nfake"
+    (out / "frame-00000001.png").write_bytes(png_bytes)
+    monkeypatch.setenv("BREACHEYE_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("BREACHEYE_RUN_ID", run_id)
+
+    with TestClient(create_app(mode="sim")) as client:
+        response = client.get("/map/depth/latest")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content == png_bytes

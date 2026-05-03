@@ -239,6 +239,13 @@ def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastA
             raise HTTPException(status_code=404, detail="no 3D point cloud artifact is available")
         return Response(path.read_bytes(), media_type="application/json")
 
+    @app.get("/map/depth/latest")
+    async def latest_depth_map():
+        path = _latest_depth_image_path()
+        if path is None:
+            raise HTTPException(status_code=404, detail="no depth map artifact is available")
+        return Response(path.read_bytes(), media_type="image/png")
+
     @app.get("/video.mjpeg")
     async def mjpeg_video():
         return StreamingResponse(
@@ -302,6 +309,21 @@ def _latest_point_cloud_path() -> Path | None:
     candidates.extend(log_dir.glob("*/map/relative-depth-point-cloud.json"))
 
     existing = [path for path in candidates if path.exists() and path.stat().st_size <= _MAX_POINT_CLOUD_BYTES]
+    if not existing:
+        return None
+    return max(existing, key=lambda path: path.stat().st_mtime)
+
+
+def _latest_depth_image_path() -> Path | None:
+    log_dir = Path(os.environ.get("BREACHEYE_LOG_DIR", "logs")).expanduser()
+    run_id = os.environ.get("BREACHEYE_RUN_ID")
+    if run_id:
+        run_candidates = [path for path in (log_dir / run_id / "rafa" / "depth").glob("frame-*.png") if path.exists()]
+        if run_candidates:
+            return max(run_candidates, key=lambda path: path.stat().st_mtime)
+
+    candidates = list(log_dir.glob("*/rafa/depth/frame-*.png"))
+    existing = [path for path in candidates if path.exists()]
     if not existing:
         return None
     return max(existing, key=lambda path: path.stat().st_mtime)

@@ -93,14 +93,63 @@ def _frame_rows(
             if isinstance(frame_id, int):
                 rows[frame_id]["frame_id"] = frame_id
                 rows[frame_id]["context_summary"] = event.get("summary", {})
+                rows[frame_id]["context_payload"] = event.get("context", {})
+        if event.get("event") == "navigation_model_input":
+            frame_id = event.get("frame_id")
+            if isinstance(frame_id, int):
+                rows[frame_id]["frame_id"] = frame_id
+                rows[frame_id]["model_input"] = {
+                    "image_path": event.get("image_path"),
+                    "detections_count": event.get("detections_count"),
+                    "depth_available": event.get("depth_available"),
+                    "depth_shape": event.get("depth_shape"),
+                    "context_summary": event.get("context_summary"),
+                }
         if event.get("event") == "navigation_decision_built":
             frame_id = event.get("frame_id")
             if isinstance(frame_id, int):
                 rows[frame_id]["frame_id"] = frame_id
+                rows[frame_id]["decision_ts"] = event.get("iso") or event.get("ts")
                 rows[frame_id]["action"] = event.get("action")
                 rows[frame_id]["confidence"] = event.get("confidence")
                 rows[frame_id]["reasoning"] = event.get("reasoning")
                 rows[frame_id]["decision_params"] = event.get("params")
+                rows[frame_id]["exploration_state"] = event.get("exploration_state")
+        if event.get("event") == "navigation_search_tactic":
+            frame_id = event.get("frame_id")
+            if isinstance(frame_id, int):
+                rows[frame_id]["frame_id"] = frame_id
+                rows[frame_id]["search_tactic"] = {
+                    key: event.get(key)
+                    for key in (
+                        "requested_action",
+                        "substituted_action",
+                        "reason",
+                        "node_id",
+                        "heading_index",
+                        "heading_deg",
+                        "heading_status",
+                        "nearest_obstacle_m",
+                        "min_forward_clearance_m",
+                        "frontier_count",
+                    )
+                }
+        if event.get("event") == "navigation_safety_override":
+            frame_id = event.get("frame_id")
+            if isinstance(frame_id, int):
+                rows[frame_id]["frame_id"] = frame_id
+                rows[frame_id]["safety_override"] = {
+                    key: event.get(key)
+                    for key in (
+                        "requested_action",
+                        "substituted_action",
+                        "requested_params",
+                        "nearest_obstacle_m",
+                        "min_forward_clearance_m",
+                        "frontier_count",
+                        "reason",
+                    )
+                }
         if event.get("event") == "frame_pipeline_summary":
             frame_id = event.get("frame_id")
             if isinstance(frame_id, int):
@@ -115,6 +164,7 @@ def _frame_rows(
             continue
         rows[frame_id]["frame_id"] = frame_id
         if event.get("event") == "navigation_received":
+            rows[frame_id]["nav_received_ts"] = event.get("iso") or event.get("ts")
             rows[frame_id]["nav_received"] = {
                 "action": event.get("action"),
                 "confidence": event.get("confidence"),
@@ -122,6 +172,21 @@ def _frame_rows(
                 "params": event.get("params"),
             }
             rows[frame_id].setdefault("reasoning", event.get("reasoning"))
+        if event.get("event") == "navigation_flight_state_guard":
+            rows[frame_id]["flight_guard"] = {
+                "requested_action": event.get("requested_action"),
+                "substituted_command": event.get("substituted_command"),
+                "reason": event.get("reason"),
+                "telemetry": event.get("telemetry"),
+                "timestamp": event.get("iso") or event.get("ts"),
+            }
+        if event.get("event") == "navigation_skipped_grounded":
+            rows[frame_id]["flight_guard"] = {
+                "requested_action": event.get("action"),
+                "substituted_command": "skip",
+                "reason": "harness reported grounded",
+                "timestamp": event.get("iso") or event.get("ts"),
+            }
         if event.get("event") == "navigation_executed":
             rows[frame_id]["command_type"] = event.get("command_type")
             rows[frame_id]["command_id"] = event.get("command_id")
@@ -139,6 +204,7 @@ def _frame_rows(
                     "ttl_ms": pending_command.get("command_ttl_ms"),
                     "status": pending_command.get("response_status"),
                     "reason": pending_command.get("response_reason"),
+                    "timestamp": pending_command.get("iso") or pending_command.get("ts"),
                 }
             pending_command = None
     for event in publisher_events:
@@ -151,6 +217,8 @@ def _frame_rows(
                     "height": event.get("height"),
                     "jpeg_bytes": event.get("jpeg_bytes"),
                 }
+    for row in rows.values():
+        row["codex_recommendation"] = _recommendation(row)
     return [rows[key] for key in sorted(rows)]
 
 
@@ -288,7 +356,25 @@ def _frame_card(row: dict[str, Any]) -> str:
     context = row.get("context_summary") or {}
     latency = row.get("latency") or {}
     command = row.get("command") or {}
+    model_input = row.get("model_input") or {}
+    search = row.get("search_tactic") or {}
+    override = row.get("safety_override") or {}
+    guard = row.get("flight_guard") or {}
     reasoning = row.get("reasoning") or (row.get("nav_received") or {}).get("reasoning") or ""
+    io_payload = {
+        "model_input": model_input,
+        "vlm_output": {
+            "action": row.get("action"),
+            "confidence": row.get("confidence"),
+            "params": row.get("decision_params"),
+            "reasoning": reasoning,
+            "timestamp": row.get("decision_ts"),
+        },
+        "search_tactic": search,
+        "safety_override": override,
+        "flight_guard": guard,
+        "command": command,
+    }
     image_html = f"""
       <div class="pair">
         {_image_or_blank(drone_img, "Drone frame")}
@@ -303,12 +389,51 @@ def _frame_card(row: dict[str, Any]) -> str:
         <p><strong>Decision:</strong> {_esc(row.get("action", "missing"))}</p>
         <p><strong>Confidence:</strong> {_esc(row.get("confidence", "n/a"))}</p>
         <p><strong>Reason:</strong> {_esc(reasoning)}</p>
+        <p><strong>Search:</strong> requested={_esc(search.get("requested_action", "n/a"))}, substituted={_esc(search.get("substituted_action", "n/a"))}, heading={_esc(search.get("heading_deg", "n/a"))}</p>
+        <p><strong>Guard:</strong> {_esc(guard.get("substituted_command", "n/a"))} {_esc(guard.get("reason", ""))}</p>
         <p><strong>Command:</strong> {_esc(command.get("type", row.get("command_type", "n/a")))} {_esc(command.get("payload", ""))}</p>
+        <p><strong>Would do:</strong> {_esc(row.get("codex_recommendation", "n/a"))}</p>
         <p><strong>Context:</strong> nearest={_esc(context.get("nearest_obstacle_m", "n/a"))}m, objects={_esc(context.get("known_objects", "n/a"))}, frontiers={_esc(context.get("frontiers", "n/a"))}</p>
-        <p><strong>Latency:</strong> total={_esc(latency.get("total_ms", "n/a"))}ms, nav={_esc(latency.get("navigation_ms", "n/a"))}ms</p>
+        <p><strong>Timestamps:</strong> decision={_esc(row.get("decision_ts", "n/a"))}, command={_esc(command.get("timestamp", "n/a"))}</p>
+        <p><strong>Latency:</strong> total={_esc(latency.get("total_ms", "n/a"))}ms, depth={_esc(latency.get("depth_ms", "n/a"))}ms, nav={_esc(latency.get("navigation_ms", "n/a"))}ms</p>
+        <details><summary>Call I/O</summary><pre>{_esc(json.dumps(io_payload, indent=2, sort_keys=True))}</pre></details>
       </div>
     </article>
     """
+
+
+def _recommendation(row: dict[str, Any]) -> str:
+    guard = row.get("flight_guard") or {}
+    if guard.get("substituted_command") == "emergency":
+        return f"Emergency/stop immediately; telemetry guard fired ({guard.get('reason')})."
+    if guard.get("substituted_command") == "skip":
+        return "Do not command motion; the harness says the aircraft is already grounded."
+
+    context = row.get("context_summary") or {}
+    nearest = _float_or_none(context.get("nearest_obstacle_m"))
+    frontiers = int(context.get("frontiers") or 0)
+    search = row.get("search_tactic") or {}
+    threshold = _float_or_none(search.get("min_forward_clearance_m")) or 0.45
+    action = row.get("action")
+
+    if nearest is not None and nearest <= threshold:
+        return f"Rotate and re-assess; center depth {nearest:.3f} is at/below threshold {threshold:.3f}."
+    if frontiers <= 0:
+        return "Rotate and re-assess; no forward frontier was emitted for this frame."
+    if action == "move_forward":
+        return "Only allow a short forward pulse if flight telemetry is stable and the view stays clear."
+    if action in {"rotate_left", "rotate_right"}:
+        return "Rotate/re-assess is appropriate for this frame."
+    return "Hold/hover only if telemetry is stable; otherwise land or emergency-stop."
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _image_or_blank(src: str | None, alt: str) -> str:
@@ -370,6 +495,23 @@ def _event_detail(event: dict[str, Any]) -> str | None:
             f"frame={event.get('frame_id')} action={event.get('action')} "
             f"conf={event.get('confidence')} reason={event.get('reasoning')}"
         )
+    if component == "rafa" and name == "navigation_model_input":
+        summary = event.get("context_summary", {})
+        return (
+            f"frame={event.get('frame_id')} depth={event.get('depth_available')} "
+            f"nearest={summary.get('nearest_obstacle_m')} frontiers={summary.get('frontiers')}"
+        )
+    if component == "rafa" and name == "navigation_search_tactic":
+        return (
+            f"frame={event.get('frame_id')} requested={event.get('requested_action')} "
+            f"sub={event.get('substituted_action')} heading={event.get('heading_deg')} "
+            f"nearest={event.get('nearest_obstacle_m')}"
+        )
+    if component == "rafa" and name == "navigation_safety_override":
+        return (
+            f"frame={event.get('frame_id')} requested={event.get('requested_action')} "
+            f"sub={event.get('substituted_action')} nearest={event.get('nearest_obstacle_m')}"
+        )
     if component == "rafa" and name == "frame_pipeline_summary":
         return f"frame={event.get('frame_id')} total={event.get('total_ms')}ms nav={event.get('navigation_ms')}ms"
     if component == "rafa" and name == "navigation_context_built":
@@ -382,6 +524,13 @@ def _event_detail(event: dict[str, Any]) -> str | None:
         )
     if component == "nav_interpreter" and name == "command_posted":
         return f"type={event.get('command_type')} status={event.get('response_status')} payload={event.get('command_payload')}"
+    if component == "nav_interpreter" and name == "navigation_flight_state_guard":
+        return (
+            f"frame={event.get('frame_id')} requested={event.get('requested_action')} "
+            f"sub={event.get('substituted_command')} reason={event.get('reason')}"
+        )
+    if component == "nav_interpreter" and name == "navigation_skipped_grounded":
+        return f"frame={event.get('frame_id')} action={event.get('action')} skipped grounded"
     if component == "nav_interpreter" and name == "navigation_executed":
         return f"frame={event.get('frame_id')} command={event.get('command_type')} id={event.get('command_id')}"
     if component == "map_builder" and name == "map_updated":

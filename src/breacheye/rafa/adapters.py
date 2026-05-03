@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from time import monotonic, time
 from typing import Any
@@ -159,10 +160,27 @@ def _has_close_center_obstacle(depth: DepthOutput | None) -> bool:
 
         values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
         height, width = values.shape
-        band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
-        finite = band[np.isfinite(band)]
-        if not finite.size:
+        center_band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
+        lower_forward = values[
+            int(height * 0.45) : int(height * 0.9),
+            int(width * 0.25) : int(width * 0.75),
+        ]
+        scores = []
+        center_finite = center_band[np.isfinite(center_band)]
+        if center_finite.size:
+            scores.append(float(np.nanpercentile(center_finite, 50)))
+        lower_finite = lower_forward[np.isfinite(lower_forward)]
+        if lower_finite.size:
+            scores.append(float(np.nanpercentile(lower_finite, 20)))
+        if not scores:
             return True
-        return bool(float(np.nanpercentile(finite, 50)) < 0.15)
+        return bool(min(scores) <= _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45))
     except Exception:
         return True
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return max(0.0, min(10.0, float(os.environ.get(name, default))))
+    except (TypeError, ValueError):
+        return default

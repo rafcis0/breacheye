@@ -77,8 +77,7 @@ class LazyDepthAnythingV2Estimator(DepthAdapter):
         if finite.any():
             near = float(np.nanpercentile(depth[finite], 2))
             far = float(np.nanpercentile(depth[finite], 98))
-            denom = max(far - near, 1e-6)
-            relative = np.clip((depth - near) / denom, 0.0, 1.0).astype(np.float32)
+            relative = _depth_anything_to_relative_far(depth, near=near, far=far)
         else:
             relative = np.ones_like(depth, dtype=np.float32)
         return DepthOutput(
@@ -118,8 +117,9 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         import asyncio
         import cv2
 
+        depth_hint = _depth_prompt_hint(depth)
         if self.server_url:
-            result = await asyncio.to_thread(self._run_server, frame)
+            result = await asyncio.to_thread(self._run_server, frame, depth_hint)
             action = _extract_action(result)
             return NavigationOutput(
                 frame_id=meta.frame_id,
@@ -137,7 +137,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
             image_path = handle.name
         try:
             cv2.imwrite(image_path, frame)
-            result = await asyncio.to_thread(self._run_cli, image_path)
+            result = await asyncio.to_thread(self._run_cli, image_path, depth_hint)
         finally:
             try:
                 os.unlink(image_path)
@@ -156,13 +156,14 @@ class LazyQwen3VLNavigator(NavigationAdapter):
             ),
         )
 
-    def _run_cli(self, image_path: str) -> str:
+    def _run_cli(self, image_path: str, depth_hint: str) -> str:
         prompt = (
             "You are controlling an indoor drone. Look at the image and return only compact JSON "
             "with keys action, confidence, reasoning. Allowed action values: hover, move_forward, "
             "rotate_left, rotate_right. Choose move_forward only when the center path is clear. "
             "Choose rotate_left or rotate_right to scan when the path is unclear or partially blocked. "
-            "Use hover only for immediate obstacles, people too close, invalid image, or unsafe flight."
+            "Use hover only for immediate obstacles, people too close, invalid image, or unsafe flight. "
+            f"{depth_hint}"
         )
         completed = subprocess.run(
             [
@@ -191,7 +192,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
             raise ModelUnavailable(f"Qwen3-VL runtime failed: {output[-1000:]}")
         return output
 
-    def _run_server(self, frame: Any) -> str:
+    def _run_server(self, frame: Any, depth_hint: str) -> str:
         import cv2
 
         ok, encoded = cv2.imencode(".jpg", frame)
@@ -204,7 +205,7 @@ class LazyQwen3VLNavigator(NavigationAdapter):
             "Choose move_forward only when the center path is clear. Choose rotate_left or "
             "rotate_right to scan when the path is unclear or partially blocked. Use hover "
             "only for immediate obstacles, people too close, invalid image, or unsafe flight. "
-            "No markdown."
+            f"{depth_hint} No markdown."
         )
         payload = {
             "model": "gpt-4-vision",
@@ -341,3 +342,65 @@ def _bgr_to_rgb(frame: Any) -> Any:
         return frame[:, :, ::-1]
     except Exception:
         return frame
+
+
+def _depth_prompt_hint(depth: DepthOutput | None) -> str:
+    if depth is None:
+        return "No depth map is available; be conservative."
+    try:
+        import numpy as np
+
+        values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+        clearance = _forward_clearance_score(values)
+        if clearance is None:
+            return "Depth forward corridor has no finite values; be conservative."
+    except Exception:
+        return "Depth map could not be summarized; be conservative."
+    threshold = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45, minimum=0.0, maximum=10.0)
+    status = "blocked or marginal" if clearance <= threshold else "clearer"
+    return (
+        "Depth Anything relative depth hint: forward-corridor score is "
+        f"{clearance:.3f}; forward-clear threshold is {threshold:.3f}; "
+        f"corridor is {status}. Lower means closer, higher means farther. "
+        "If the corridor is blocked or marginal, choose rotate_right instead of move_forward."
+    )
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _depth_anything_to_relative_far(depth: Any, *, near: float, far: float) -> Any:
+    import numpy as np
+
+    # Depth Anything V2's raw prediction behaves as inverse relative depth in
+    # practice: larger values correspond to closer surfaces. The wire contract
+    # is `relative_0_near_1_far`, so invert the normalized model output here.
+    denom = max(far - near, 1e-6)
+    inverse_relative = np.clip((depth - near) / denom, 0.0, 1.0)
+    return (1.0 - inverse_relative).astype(np.float32)
+
+
+def _forward_clearance_score(values: Any) -> float | None:
+    import numpy as np
+
+    height, width = values.shape
+    center_band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
+    lower_forward = values[
+        int(height * 0.45) : int(height * 0.9),
+        int(width * 0.25) : int(width * 0.75),
+    ]
+    scores = []
+    center_finite = center_band[np.isfinite(center_band)]
+    if center_finite.size:
+        scores.append(float(np.nanpercentile(center_finite, 50)))
+    lower_finite = lower_forward[np.isfinite(lower_forward)]
+    if lower_finite.size:
+        scores.append(float(np.nanpercentile(lower_finite, 20)))
+    if not scores:
+        return None
+    return min(scores)

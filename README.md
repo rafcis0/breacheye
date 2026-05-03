@@ -166,9 +166,10 @@ breacheye fly --mode tello --rafa-mode models --fps 2 --auto-takeoff
 
 Auto-takeoff climbs an extra 100 cm by default to reduce ground-effect drift. Override with `--takeoff-climb-cm 120`, or disable with `--takeoff-climb-cm 0`.
 
-If hover consistently drifts backward/right, set small Tello hover trim before launch:
+Leave hover trim disabled for autonomous runs until we calibrate it. If hover consistently drifts in one direction during a controlled manual test, enable a very small trim explicitly:
 
 ```bash
+export BREACHEYE_TELLO_ENABLE_HOVER_TRIM=1
 export BREACHEYE_TELLO_HOVER_FORWARD_BACK=6
 export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
 ```
@@ -200,6 +201,7 @@ Ready on `main`:
 - [x] Model-mode adapters for Qwen server navigation and Depth Anything V2.
 - [x] Offline logs save source frames, Rafa frames, depth `.npy`, depth PNGs, nav context, health, and event JSONL.
 - [x] Spatial navigation context schema and `navigation_context_built` logs.
+- [x] Frontend 3D panel renders the live point cloud plus the latest model depth map from `/map/depth/latest`.
 - [x] One-command simulator loop: `breacheye fly --mode sim --rafa-mode stub --duration-s 20`.
 - [x] One-command Tello loop: `breacheye fly --mode tello --rafa-mode models --fps 5`.
 - [x] Demo launcher: `breacheye demo --mode live|recorded|mock`.
