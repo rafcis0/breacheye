@@ -164,14 +164,22 @@ Interfaces are frozen. Models are not. Rafa may swap models behind the same ZMQ 
 
 | Layer | Preferred | Fallback 1 | Fallback 2 |
 |-------|-----------|------------|------------|
-| Detection | Moondream Photon | YOLO-World (same POI JSON) | Rule-based from depth only |
-| Depth | Depth Anything V2 | No depth — nav avoids forward, hover/rotate only | — |
-| Navigation | Qwen 3-VL 8B | Rule-based from detections + depth | Scripted scan pattern |
+| Detection | ~~Moondream Photon~~ **BLOCKED** (MPS/Metal issues, see #44) | YOLO-World (same POI JSON) | Stub/rule-based from depth only |
+| Depth | Depth Anything V2 (**working** on MPS) | No depth — nav avoids forward, hover/rotate only | — |
+| Navigation | Qwen 3-VL 2B via llama-server (~1.3s warm) | Rule-based from detections + depth | Scripted scan pattern |
 
 Rules:
 - Output contracts do not change regardless of model.
 - Health channel identifies active model names and fallback state.
 - Demo can run in stub/scripted mode if all models fail.
+
+## Known Runtime Constraints (updated 2026-05-02)
+
+**Moondream is not viable for demo.** GGUF: 14s latency, no structured JSON. Metal: llama.cpp assertion failure. Photon: Torch/MPS binary mismatch. Detection will be stub or YOLO-World fallback. Cooper's frontend and Palantir push must handle synthetic confidence values.
+
+**Navigation decisions arrive at ~1Hz.** Qwen 3-VL 2B is the only working VLM. State machine must hover between decisions — do not expect frame-rate nav commands.
+
+**Depth polarity needs verification.** CONSTITUTION specifies 0.0 = near, 1.0 = far. Depth Anything V2 raw output may be inverse-depth. Rafa's spatial context uses > 0.35 as "open space." Verify with a known frame before live flight — inverted polarity would read a wall as open space.
 
 ## Schema Validation and Error Handling (resolves #5)
 
@@ -191,9 +199,9 @@ One bad model response must never crash the live demo.
 
 | Component | Target | Acceptable | Failure |
 |-----------|--------|------------|---------|
-| Moondream/frame | 20ms | 50ms | >100ms |
+| ~~Moondream/frame~~ | ~~20ms~~ | ~~50ms~~ | **BLOCKED — see #44** |
 | Depth/frame | 31ms | 50ms | >100ms |
-| Qwen/keyframe | 1.5s | 3s | >5s |
+| Qwen/keyframe (2B) | 1.3s | 3s | >5s |
 | Frame capture | 30 FPS | 15 FPS | <10 FPS |
 | Memory (all models) | 8GB | 12GB | >20GB |
 
