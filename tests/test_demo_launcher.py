@@ -54,6 +54,7 @@ def test_live_deferred_video_starts_harness_after_background_specs():
         "harness",
     ]
     assert "--defer-video" in specs[-1].argv
+    assert next(s for s in specs if s.name == "nav_interpreter").post_takeoff is True
 
 
 def test_live_mode_reads_frames_from_harness():

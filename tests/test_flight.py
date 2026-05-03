@@ -47,6 +47,7 @@ def test_tello_auto_takeoff_starts_background_before_deferred_harness() -> None:
         "harness",
     ]
     assert "--defer-video" in specs[-1].argv
+    assert next(spec for spec in specs if spec.name == "nav_interpreter").post_takeoff is True
 
 
 def test_sim_flight_defaults_to_synthetic_frames() -> None:
@@ -376,6 +377,39 @@ def test_takeoff_stability_gate_lands_on_repeated_drift(monkeypatch) -> None:
         ("post", "http://harness/commands", "hover", 5.0),
         ("post", "http://harness/commands", "land", 30.0),
     ]
+
+
+def test_takeoff_stability_gate_skips_when_no_fresh_sample(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "telemetry": {"flying": True},
+                "stabilizer": {
+                    "mode": "log",
+                    "running": True,
+                    "last_skip_reason": "height_too_low:30",
+                    "last_estimate": {},
+                },
+            }
+
+    def fake_get(url, timeout):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    times = iter([0.0, 0.0, 0.2, 0.4, 0.6])
+    monkeypatch.setenv("BREACHEYE_TAKEOFF_STABILITY_TIMEOUT_S", "0.5")
+    monkeypatch.setenv("BREACHEYE_TAKEOFF_STABILITY_SAMPLE_S", "0.1")
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("time.monotonic", lambda: next(times))
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    _takeoff_stability_gate("http://harness", prefix="[test]")
+
+    assert calls
 
 
 def test_wait_for_first_frame_requires_full_size(monkeypatch) -> None:

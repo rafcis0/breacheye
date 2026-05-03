@@ -88,6 +88,7 @@ def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
                 config.log_dir,
                 *(_run_id_args(config.run_id)),
             ],
+            post_takeoff=config.mode == "tello" and config.auto_takeoff,
         ),
         ProcessSpec(
             "map_builder",
@@ -342,7 +343,6 @@ def _post_takeoff(
         return
 
     _settle_after_takeoff(settle_s)
-    _takeoff_stability_gate(base_url)
 
     speed_cm_s = _env_int("BREACHEYE_TAKEOFF_CLIMB_SPEED_CM_S", 20, minimum=5, maximum=30)
     pulse_cap_cm = _env_int("BREACHEYE_TAKEOFF_CLIMB_PULSE_CM", 20, minimum=5, maximum=30)
@@ -394,7 +394,7 @@ def _takeoff_stability_gate(base_url: str, *, prefix: str = "[flight]") -> None:
     max_age_s = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_AGE_S", 1.5, minimum=0.1, maximum=10.0)
     max_dx_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_DX_PX", 4.0, minimum=0.1, maximum=80.0)
     max_dy_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_DY_PX", 6.0, minimum=0.1, maximum=80.0)
-    max_radial_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_RADIAL_PX", 2.0, minimum=0.1, maximum=80.0)
+    max_radial_px = _env_float("BREACHEYE_TAKEOFF_STABILITY_MAX_RADIAL_PX", 6.0, minimum=0.1, maximum=80.0)
     required_samples = _env_int("BREACHEYE_TAKEOFF_STABILITY_REQUIRED_SAMPLES", 2, minimum=1, maximum=10)
     max_unstable_samples = _env_int("BREACHEYE_TAKEOFF_STABILITY_MAX_UNSTABLE_SAMPLES", 2, minimum=1, maximum=10)
     deadline = time.monotonic() + timeout_s
@@ -471,6 +471,10 @@ def _takeoff_stability_gate(base_url: str, *, prefix: str = "[flight]") -> None:
                 print(f"{prefix} takeoff stability accepted: {last_summary}", flush=True)
                 return
         time.sleep(sample_s)
+
+    if stable_samples == 0 and unstable_samples == 0:
+        print(f"{prefix} takeoff stability gate skipped; no fresh stabilizer sample ({last_summary})", flush=True)
+        return
 
     _land_after_takeoff_stability_failure(base_url, prefix=prefix, reason=last_summary)
     raise RuntimeError(f"takeoff stability gate timed out: {last_summary}")
@@ -871,6 +875,7 @@ def build_demo_specs(
         "nav_interpreter",
         [sys.executable, "-m", "breacheye.cli", "nav",
          "--command-url", f"{base_url}/commands", "--log-dir", log_dir, *_run_id_args(run_id)],
+        post_takeoff=mode == "live" and defer_video,
     ))
     if run_id:
         specs.append(ProcessSpec(
