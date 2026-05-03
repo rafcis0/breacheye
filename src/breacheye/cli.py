@@ -73,6 +73,17 @@ def main() -> None:
     demo.add_argument("--log-dir", default="logs")
     demo.add_argument("--run-id")
     demo.add_argument("--duration-s", type=float, help="Stop demo after N seconds.")
+    demo.add_argument(
+        "--no-auto-takeoff",
+        action="store_true",
+        help="For live demo mode, start the stack without issuing takeoff.",
+    )
+    demo.add_argument(
+        "--takeoff-climb-cm",
+        type=int,
+        default=100,
+        help="Extra climb after live demo auto-takeoff. Use 0 to disable.",
+    )
 
     args = parser.parse_args()
     if args.command == "serve":
@@ -115,6 +126,8 @@ def main() -> None:
             log_dir=args.log_dir,
             run_id=args.run_id,
             duration_s=args.duration_s,
+            auto_takeoff=not args.no_auto_takeoff,
+            takeoff_climb_cm=args.takeoff_climb_cm,
         ))
 
 
@@ -200,6 +213,8 @@ def _demo(
     log_dir: str,
     run_id: str | None,
     duration_s: float | None,
+    auto_takeoff: bool,
+    takeoff_climb_cm: int,
 ) -> int:
     from breacheye.flight import run_demo
 
@@ -212,6 +227,8 @@ def _demo(
         log_dir=log_dir,
         run_id=run_id,
         duration_s=duration_s,
+        auto_takeoff=auto_takeoff,
+        takeoff_climb_cm=takeoff_climb_cm,
     )
 
 

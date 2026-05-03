@@ -43,6 +43,15 @@ def test_live_mode_specs():
     assert "mock_detections" not in names
 
 
+def test_live_mode_reads_frames_from_harness():
+    specs = build_demo_specs("live")
+    publisher = [s for s in specs if s.name == "frame_publisher"][0]
+
+    assert "--harness-url" in publisher.argv
+    assert "--tello" not in publisher.argv
+    assert "http://127.0.0.1:8000/frame/latest" in publisher.argv
+
+
 def test_harness_mode_sim_for_mock():
     specs = build_demo_specs("mock")
     harness = [s for s in specs if s.name == "harness"][0]

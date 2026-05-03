@@ -144,7 +144,7 @@ breacheye demo --mode recorded --video demo/sample.mp4 --duration-s 20
 breacheye demo --mode mock --duration-s 20
 ```
 
-`demo --mode live` does not issue takeoff. Use `breacheye fly` for physical flight.
+`demo --mode live` auto-takes off by default. Use `--no-auto-takeoff` to start the live stack without lifting off.
 
 Run the full loop in simulator mode first:
 
@@ -185,6 +185,7 @@ Ready on `main`:
 - [x] One-command simulator loop: `breacheye fly --mode sim --rafa-mode stub --duration-s 20`.
 - [x] One-command Tello loop: `breacheye fly --mode tello --rafa-mode models --fps 5`.
 - [x] Demo launcher: `breacheye demo --mode live|recorded|mock` with live-to-recorded-to-mock fallback.
+- [x] Live demo auto-takeoff with `--no-auto-takeoff` escape hatch.
 - [x] Harness-owned frame source, so only the harness owns the Tello connection.
 - [x] Nav bridge from Rafa navigation decisions to `/commands`.
 - [x] README and hardware runbook document the flow.

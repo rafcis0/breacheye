@@ -1,10 +1,13 @@
 from breacheye.flight import (
     FlightLaunchConfig,
     _apply_local_model_defaults,
+    _post_command_checked,
     _post_shutdown_land,
     _post_takeoff,
     build_process_specs,
 )
+
+import pytest
 
 
 def test_tello_flight_defaults_to_harness_frame_source() -> None:
@@ -107,7 +110,7 @@ def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> No
 
     def fake_post(url, json, timeout):
         calls.append(("post", url, json, timeout))
-        return FakeResponse()
+        return FakeResponse({"status": "executed"})
 
     monkeypatch.setattr("httpx.get", fake_get)
     monkeypatch.setattr("httpx.post", fake_post)
@@ -123,3 +126,19 @@ def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> No
     assert all(call[2]["type"] == "rc_control" for call in climb_pulses)
     assert all(call[2]["payload"]["up_down"] == 30 for call in climb_pulses)
     assert [call[2]["payload"]["duration_ms"] for call in climb_pulses] == [1000, 1000, 1000, 333]
+
+
+def test_post_command_checked_raises_on_failed_body(monkeypatch) -> None:
+    class FakeResponse:
+        text = '{"status":"failed","reason":"no lift"}'
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {"status": "failed", "reason": "no lift"}
+
+    monkeypatch.setattr("httpx.post", lambda *args, **kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError, match="no lift"):
+        _post_command_checked("http://harness", {"type": "takeoff"}, label="takeoff")

@@ -149,6 +149,9 @@ def run_flight(config: FlightLaunchConfig) -> int:
     except KeyboardInterrupt:
         print("[flight] interrupted; stopping", flush=True)
         return 130
+    except Exception as exc:
+        print(f"[flight] launch failed: {exc}", flush=True)
+        return 1
     finally:
         _stop_flight_processes(procs, config.base_url)
 
@@ -227,13 +230,11 @@ def _wait_for_harness(base_url: str, timeout_s: float = 20.0) -> None:
 def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
     import httpx
 
-    response = httpx.post(
-        f"{base_url}/commands",
-        json={"type": "takeoff", "issued_by": "flight_launcher"},
-        timeout=5.0,
+    _post_command_checked(
+        base_url,
+        {"type": "takeoff", "issued_by": "flight_launcher"},
+        label="takeoff",
     )
-    response.raise_for_status()
-    print(f"[flight] takeoff response: {response.text}", flush=True)
 
     climb_cm = max(0, min(150, int(climb_cm)))
     if climb_cm <= 0:
@@ -249,23 +250,35 @@ def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
         pulse_index += 1
         pulse_cm = min(30, remaining_cm)
         duration_ms = max(300, min(1000, int(pulse_cm / speed_cm_s * 1000)))
-        response = httpx.post(
-            f"{base_url}/commands",
-            json={
+        _post_command_checked(
+            base_url,
+            {
                 "type": "rc_control",
                 "issued_by": "flight_launcher_takeoff_climb",
                 "ttl_ms": duration_ms + 200,
                 "payload": {"up_down": speed_cm_s, "duration_ms": duration_ms},
             },
-            timeout=5.0,
-        )
-        response.raise_for_status()
-        print(
-            f"[flight] takeoff climb pulse {pulse_index} {pulse_cm}cm/{climb_cm}cm response: {response.text}",
-            flush=True,
+            label=f"takeoff climb pulse {pulse_index} {pulse_cm}cm/{climb_cm}cm",
         )
         remaining_cm -= pulse_cm
         time.sleep(0.15)
+
+
+def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
+    import httpx
+
+    response = httpx.post(
+        f"{base_url}/commands",
+        json=command,
+        timeout=5.0,
+    )
+    response.raise_for_status()
+    print(f"[flight] {label} response: {response.text}", flush=True)
+    payload = response.json()
+    if payload.get("status") != "executed":
+        reason = payload.get("reason") or payload.get("status") or "unknown failure"
+        raise RuntimeError(f"{label} failed: {reason}")
+    return payload
 
 
 def _wait_for_flying(base_url: str, timeout_s: float = 5.0) -> bool:
@@ -346,7 +359,8 @@ def build_demo_specs(
         specs.append(ProcessSpec(
             "frame_publisher",
             [sys.executable, str(root / "integration" / "frame_publisher.py"),
-             "--fps", str(fps), "--tello", "--log-dir", log_dir, *_run_id_args(run_id)],
+             "--fps", str(fps), "--harness-url", f"{base_url}/frame/latest",
+             "--log-dir", log_dir, *_run_id_args(run_id)],
         ))
     elif mode == "recorded":
         playback_args = [
@@ -409,6 +423,8 @@ def run_demo(
     log_dir: str = "logs",
     run_id: str | None = None,
     duration_s: float | None = None,
+    auto_takeoff: bool = True,
+    takeoff_climb_cm: int = 100,
 ) -> int:
     run_id = run_id or time.strftime("demo-%Y%m%dT%H%M%SZ", time.gmtime())
     resolved_mode = _resolve_demo_mode(mode, video_path)
@@ -440,6 +456,9 @@ def run_demo(
             elif spec.name == "frame_publisher":
                 time.sleep(0.5)
 
+        if resolved_mode == "live" and auto_takeoff:
+            _post_takeoff(base_url, climb_cm=takeoff_climb_cm)
+
         print("\n[demo] all components running — Ctrl+C to stop\n", flush=True)
 
         deadline = time.monotonic() + duration_s if duration_s else None
@@ -456,6 +475,9 @@ def run_demo(
     except KeyboardInterrupt:
         print("\n[demo] interrupted; stopping", flush=True)
         return 130
+    except Exception as exc:
+        print(f"\n[demo] launch failed: {exc}", flush=True)
+        return 1
     finally:
         _stop_flight_processes(procs, base_url)
 

@@ -150,7 +150,11 @@ class SafetyController:
                             await self.adapter.hover()
                             self._last_command_at = monotonic()
 
-                        if telemetry.connected and now - self._last_keepalive_at > self.config.keepalive_interval_s:
+                        if (
+                            telemetry.connected
+                            and telemetry.flying
+                            and now - self._last_keepalive_at > self.config.keepalive_interval_s
+                        ):
                             await self.adapter.keepalive()
                             self._last_keepalive_at = monotonic()
             except Exception as exc:

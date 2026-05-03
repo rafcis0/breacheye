@@ -111,6 +111,24 @@ async def test_watchdog_hovers_after_stale_command() -> None:
 
 
 @pytest.mark.asyncio
+async def test_watchdog_does_not_keepalive_when_grounded() -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    controller = SafetyController(
+        adapter,
+        AsyncEventBus(),
+        SafetyConfig(watchdog_interval_s=0.01, stale_command_s=0.01, keepalive_interval_s=0.01),
+    )
+    await controller.start()
+    try:
+        await asyncio.sleep(0.05)
+    finally:
+        await controller.stop()
+
+    assert ("keepalive", ()) not in adapter.commands
+
+
+@pytest.mark.asyncio
 async def test_watchdog_does_not_interleave_with_active_command() -> None:
     class SlowLandAdapter(SimAdapter):
         async def land(self) -> None:

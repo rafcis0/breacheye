@@ -104,7 +104,7 @@ breacheye demo --mode recorded --video demo/sample.mp4 --duration-s 20
 breacheye demo --mode mock --duration-s 20
 ```
 
-`demo --mode live` starts the live stack but does not issue takeoff; use `fly --auto-takeoff` for physical flight.
+`demo --mode live` auto-takes off by default. Use `--no-auto-takeoff` to start the live stack without lifting off.
 
 ## Troubleshooting
 
