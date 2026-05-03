@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useWebSocket } from '../contexts/WebSocketContext'
 
 const SRC_W = 960
@@ -47,6 +47,89 @@ function drawGrid(ctx, w, h) {
   }
 }
 
+function drawLegend(ctx, w, h) {
+  const PAD = 8
+  const DOT_R = 4
+  const LINE_H = 16
+  const FONT_SIZE = 10
+  const entries = Object.entries(CATEGORY_COLORS)
+
+  ctx.save()
+  ctx.font = `${FONT_SIZE}px monospace`
+
+  // Measure widest label to size the background rect
+  let maxLabelW = 0
+  for (const [cat] of entries) {
+    const tw = ctx.measureText(cat).width
+    if (tw > maxLabelW) maxLabelW = tw
+  }
+
+  const rectW = PAD * 2 + DOT_R * 2 + 6 + maxLabelW
+  const rectH = PAD * 2 + entries.length * LINE_H
+
+  const rx = PAD
+  const ry = h - rectH - PAD
+
+  // Background
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.72)'
+  ctx.beginPath()
+  ctx.roundRect(rx, ry, rectW, rectH, 3)
+  ctx.fill()
+
+  // Entries
+  for (let i = 0; i < entries.length; i++) {
+    const [cat, color] = entries[i]
+    const cx = rx + PAD + DOT_R
+    const cy = ry + PAD + i * LINE_H + LINE_H / 2
+
+    ctx.beginPath()
+    ctx.arc(cx, cy, DOT_R, 0, Math.PI * 2)
+    ctx.fillStyle = color
+    ctx.fill()
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(cat, cx + DOT_R + 6, cy)
+  }
+
+  ctx.restore()
+}
+
+function drawCompass(ctx, w) {
+  const SIZE = 24
+  const PAD = 10
+  const cx = w - PAD - SIZE / 2
+  const cy = PAD + SIZE / 2
+
+  ctx.save()
+
+  // Background circle
+  ctx.beginPath()
+  ctx.arc(cx, cy, SIZE / 2, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.72)'
+  ctx.fill()
+
+  // North triangle
+  const triH = 8
+  const triW = 5
+  ctx.beginPath()
+  ctx.moveTo(cx, cy - SIZE / 2 + 4)
+  ctx.lineTo(cx - triW / 2, cy - SIZE / 2 + 4 + triH)
+  ctx.lineTo(cx + triW / 2, cy - SIZE / 2 + 4 + triH)
+  ctx.closePath()
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+
+  // "N" label
+  ctx.font = '8px monospace'
+  ctx.fillStyle = '#ffffff'
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'center'
+  ctx.fillText('N', cx, cy + SIZE / 2 - 6)
+
+  ctx.restore()
+}
+
 export default function TacticalMap() {
   const canvasRef = useRef(null)
   const markersRef = useRef([])
@@ -55,6 +138,7 @@ export default function TacticalMap() {
   const dirtyRef = useRef(true)
   const rafRef = useRef(null)
   const prevTelemetryRef = useRef(null)
+  const [poiCount, setPoiCount] = useState(0)
 
   const { data: detectionsData } = useWebSocket('drone.detections')
   const { data: telemetryData } = useWebSocket('drone.telemetry')
@@ -165,6 +249,10 @@ export default function TacticalMap() {
       ctx.fillText(text, tx + 6, ty + textH / 2)
       ctx.restore()
     }
+
+    // Overlay elements — drawn last so they're always on top
+    drawLegend(ctx, w, h)
+    drawCompass(ctx, w)
   }, [])
 
   // Canvas resize observer
@@ -252,6 +340,7 @@ export default function TacticalMap() {
       }
     }
 
+    setPoiCount(markersRef.current.length)
     dirtyRef.current = true
   }, [detectionsData])
 
@@ -290,7 +379,9 @@ export default function TacticalMap() {
   return (
     <div className="tactical-map">
       <div className="tactical-map__header">
-        <span className="tactical-map__title">TACTICAL MAP</span>
+        <span className="tactical-map__title">
+          TACTICAL MAP · {poiCount} POI
+        </span>
       </div>
       <canvas ref={canvasRef} className="tactical-map__canvas" />
     </div>
