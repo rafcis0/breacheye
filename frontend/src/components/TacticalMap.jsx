@@ -48,48 +48,57 @@ function drawGrid(ctx, w, h) {
 }
 
 function drawLegend(ctx, h) {
-  const PAD = 8
-  const DOT_R = 4
-  const LINE_H = 16
-  const FONT_SIZE = 10
-  const entries = Object.entries(CATEGORY_COLORS)
+  const PAD = 6
+  const DOT_R = 2
+  const FONT_SIZE = 9
+  const LINE_H = 13
+  const COL_GAP = 8
+  const MAX_ENTRIES = 5
+
+  const entries = Object.entries(CATEGORY_COLORS).slice(0, MAX_ENTRIES)
+  const COLS = 2
+  const ROWS = Math.ceil(entries.length / COLS)
 
   ctx.save()
   ctx.font = `${FONT_SIZE}px monospace`
 
-  // Measure widest label to size the background rect
+  // Measure widest label per column
   let maxLabelW = 0
   for (const [cat] of entries) {
     const tw = ctx.measureText(cat).width
     if (tw > maxLabelW) maxLabelW = tw
   }
 
-  const rectW = PAD * 2 + DOT_R * 2 + 6 + maxLabelW
-  const rectH = PAD * 2 + entries.length * LINE_H
+  const cellW = DOT_R * 2 + 4 + maxLabelW
+  const rectW = PAD * 2 + cellW * COLS + COL_GAP * (COLS - 1)
+  const rectH = PAD * 2 + ROWS * LINE_H
 
   const rx = PAD
   const ry = h - rectH - PAD
 
-  // Background
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.72)'
+  // Background pill
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'
   ctx.beginPath()
-  ctx.roundRect(rx, ry, rectW, rectH, 3)
+  ctx.roundRect(rx, ry, rectW, rectH, 4)
   ctx.fill()
 
-  // Entries
+  // Entries — 2-column grid
   for (let i = 0; i < entries.length; i++) {
     const [cat, color] = entries[i]
-    const cx = rx + PAD + DOT_R
-    const cy = ry + PAD + i * LINE_H + LINE_H / 2
+    const col = i % COLS
+    const row = Math.floor(i / COLS)
+
+    const cellX = rx + PAD + col * (cellW + COL_GAP)
+    const cy = ry + PAD + row * LINE_H + LINE_H / 2
 
     ctx.beginPath()
-    ctx.arc(cx, cy, DOT_R, 0, Math.PI * 2)
+    ctx.arc(cellX + DOT_R, cy, DOT_R, 0, Math.PI * 2)
     ctx.fillStyle = color
     ctx.fill()
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)'
     ctx.textBaseline = 'middle'
-    ctx.fillText(cat, cx + DOT_R + 6, cy)
+    ctx.fillText(cat, cellX + DOT_R * 2 + 4, cy)
   }
 
   ctx.restore()
