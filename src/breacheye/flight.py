@@ -288,8 +288,31 @@ def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
     payload = response.json()
     if payload.get("status") != "executed":
         reason = payload.get("reason") or payload.get("status") or "unknown failure"
+        health = _harness_health_summary(base_url)
+        if health:
+            reason = f"{reason}; harness health: {health}"
         raise RuntimeError(f"{label} failed: {reason}")
     return payload
+
+
+def _harness_health_summary(base_url: str) -> str | None:
+    import httpx
+
+    try:
+        response = httpx.get(f"{base_url}/health", timeout=1.5)
+        response.raise_for_status()
+        telemetry = response.json().get("telemetry", {})
+    except Exception:
+        return None
+
+    fields = {
+        "connected": telemetry.get("connected"),
+        "flying": telemetry.get("flying"),
+        "battery": telemetry.get("battery"),
+        "height_cm": telemetry.get("height_cm"),
+        "flight_time_s": telemetry.get("flight_time_s"),
+    }
+    return ", ".join(f"{key}={value}" for key, value in fields.items())
 
 
 def _wait_for_flying(base_url: str, timeout_s: float = 5.0) -> bool:

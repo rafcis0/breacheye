@@ -1,6 +1,7 @@
 from breacheye.flight import (
     FlightLaunchConfig,
     _apply_local_model_defaults,
+    _harness_health_summary,
     _post_command_checked,
     _post_shutdown_land,
     _post_takeoff,
@@ -142,9 +143,33 @@ def test_post_command_checked_raises_on_failed_body(monkeypatch) -> None:
             return {"status": "failed", "reason": "no lift"}
 
     monkeypatch.setattr("httpx.post", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr("breacheye.flight._harness_health_summary", lambda _base_url: "battery=42")
 
-    with pytest.raises(RuntimeError, match="no lift"):
+    with pytest.raises(RuntimeError, match="no lift; harness health: battery=42"):
         _post_command_checked("http://harness", {"type": "takeoff"}, label="takeoff")
+
+
+def test_harness_health_summary_includes_takeoff_diagnostics(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {
+                "telemetry": {
+                    "connected": True,
+                    "flying": False,
+                    "battery": 71,
+                    "height_cm": 0,
+                    "flight_time_s": 0,
+                }
+            }
+
+    monkeypatch.setattr("httpx.get", lambda *args, **kwargs: FakeResponse())
+
+    assert _harness_health_summary("http://harness") == (
+        "connected=True, flying=False, battery=71, height_cm=0, flight_time_s=0"
+    )
 
 
 def test_rafa_log_has_navigation(tmp_path) -> None:
