@@ -598,6 +598,17 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* ── Mission phase badge ─────────────────────────────────── */
+
+@keyframes phase-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+.phase-badge-active {
+  animation: phase-badge-pulse 2s ease-in-out infinite;
+}
+
 /* ── Responsive: 1920×1080 primary target ───────────────── */
 
 @media (min-width: 1600px) {

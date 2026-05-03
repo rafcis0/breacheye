@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { WebSocketProvider } from './contexts/WebSocketContext'
+import { MissionPhaseProvider } from './contexts/MissionPhaseContext'
 import AppHeader from './components/AppHeader'
 import BottomBar from './components/BottomBar'
 import VideoPanel from './components/VideoPanel'
@@ -14,6 +15,7 @@ export default function App() {
 
   return (
     <WebSocketProvider>
+      <MissionPhaseProvider>
       {/* Full viewport column flex */}
       <div className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--bg-base)]">
 
@@ -54,6 +56,7 @@ export default function App() {
         <BottomBar />
 
       </div>
+      </MissionPhaseProvider>
     </WebSocketProvider>
   )
 }
