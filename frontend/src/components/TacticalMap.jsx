@@ -5,6 +5,7 @@ const WS_URL = 'ws://127.0.0.1:8000/events'
 const SRC_W = 960
 const SRC_H = 720
 const DEDUP_THRESHOLD = 0.05
+const MAX_MARKERS = 200
 
 const CATEGORY_COLORS = {
   'T1-01': '#60a5fa',
@@ -261,6 +262,9 @@ export default function TacticalMap() {
                 markersRef.current[existing] = marker
               } else {
                 markersRef.current.push(marker)
+                if (markersRef.current.length > MAX_MARKERS) {
+                  markersRef.current.shift()
+                }
               }
             }
 
