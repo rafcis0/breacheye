@@ -18,13 +18,13 @@ function StatusItem({ label, value, valueStyle }) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className="font-ui text-[11px] uppercase tracking-[0.14em]"
+        className="font-ui text-[11px] uppercase tracking-[0.12em]"
         style={{ color: 'var(--color-text-subtle)' }}
       >
         {label}
       </span>
       <span
-        className="font-mono text-[11px] font-medium"
+        className="font-mono text-[11px]"
         style={{ color: 'var(--color-text-secondary)', ...valueStyle }}
       >
         {value}
@@ -37,7 +37,7 @@ function StatusDotItem({ label, dotColor, text, textColor }) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className="font-ui text-[11px] uppercase tracking-[0.14em]"
+        className="font-ui text-[11px] uppercase tracking-[0.12em]"
         style={{ color: 'var(--color-text-subtle)' }}
       >
         {label}
@@ -47,7 +47,7 @@ function StatusDotItem({ label, dotColor, text, textColor }) {
         style={{ width: '7px', height: '7px', background: dotColor }}
       />
       <span
-        className="font-mono text-[11px] font-medium"
+        className="font-mono text-[11px]"
         style={{ color: textColor }}
       >
         {text}
@@ -56,7 +56,10 @@ function StatusDotItem({ label, dotColor, text, textColor }) {
   )
 }
 
-function linkStatus(connected) {
+function linkStatus(connected, connectionState) {
+  if (connectionState === CONNECTION_STATE.RECONNECTING) {
+    return { text: 'RECONNECTING', color: 'var(--color-status-caution)' }
+  }
   if (connected) {
     return { text: 'CONNECTED', color: 'var(--color-status-normal)' }
   }
@@ -83,7 +86,7 @@ export default function BottomBar() {
   const mode = flying ? 'AIRBORNE' : 'GROUNDED'
   const modeColor = flying ? 'var(--color-accent-blue)' : 'var(--color-text-subtle)'
 
-  const link = linkStatus(connected)
+  const link = linkStatus(connected, connectionState)
   const poiCount = Array.isArray(detectionsData?.detections)
     ? detectionsData.detections.length
     : 0
