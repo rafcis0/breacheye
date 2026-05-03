@@ -38,10 +38,16 @@ def main() -> None:
     offline.add_argument("--log-dir", default="logs")
     offline.add_argument("--run-id")
 
-    report = subparsers.add_parser("report", help="Build an HTML report for a logged run.")
-    report.add_argument("--run-id", default="latest", help="Run id to report, or latest.")
-    report.add_argument("--log-dir", default="logs")
-    report.add_argument("--output")
+    html_report = subparsers.add_parser("html-report", help="Build an HTML report for a logged run.")
+    html_report.add_argument("--run-id", default="latest", help="Run id to report, or latest.")
+    html_report.add_argument("--log-dir", default="logs")
+    html_report.add_argument("--output")
+
+    report = subparsers.add_parser("report", help="Fetch and display a post-flight building assessment report.")
+    report.add_argument("--run-id", default=None, help="Run ID to fetch (informational; the harness serves its current record).")
+    report.add_argument("--format", choices=["text", "json"], default="text", dest="output_format", help="Output format (default: text).")
+    report.add_argument("--narrative", action="store_true", help="Include Qwen-generated narrative summary.")
+    report.add_argument("--harness-url", default="http://127.0.0.1:8000", help="Base URL of the running harness.")
 
     monitor = subparsers.add_parser("monitor", help="Watch live harness health, frames, and run logs.")
     monitor.add_argument("--run-id", default="latest", help="Run id to watch, or latest.")
@@ -186,8 +192,18 @@ def main() -> None:
         raise SystemExit(asyncio.run(_smoke(args.mode)))
     elif args.command == "offline":
         _offline(args.offline_command, log_dir=args.log_dir, run_id=args.run_id)
-    elif args.command == "report":
+    elif args.command == "html-report":
         _report(run_id=args.run_id, log_dir=args.log_dir, output=args.output)
+    elif args.command == "report":
+        raise SystemExit(
+            asyncio.run(
+                _building_report(
+                    harness_url=args.harness_url,
+                    output_format=args.output_format,
+                    narrative=args.narrative,
+                )
+            )
+        )
     elif args.command == "monitor":
         raise SystemExit(
             _monitor(
@@ -394,6 +410,47 @@ def _offline(command: str, log_dir: str = "logs", run_id: str | None = None) -> 
     else:
         path = create_bundle(log_dir=log_dir, run_id=run_id)
     print(path)
+
+
+async def _building_report(
+    *,
+    harness_url: str,
+    output_format: str,
+    narrative: bool,
+) -> int:
+    """Fetch a BuildingReport from the harness and display it."""
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    from breacheye.report import BuildingReport
+    from breacheye.report_generator import ReportGenerator
+
+    url = harness_url.rstrip("/") + "/report"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = _json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        print(f"error: could not reach harness at {url}: {exc}", flush=True)
+        return 1
+
+    try:
+        report = BuildingReport.model_validate(data)
+    except Exception as exc:
+        print(f"error: invalid report payload from harness: {exc}", flush=True)
+        return 1
+
+    generator = ReportGenerator()
+
+    if narrative:
+        report.narrative = await generator.generate_narrative(report)
+
+    if output_format == "json":
+        print(report.model_dump_json(indent=2))
+    else:
+        print(generator.generate_text_report(report))
+
+    return 0
 
 
 def _report(run_id: str, log_dir: str = "logs", output: str | None = None) -> None:

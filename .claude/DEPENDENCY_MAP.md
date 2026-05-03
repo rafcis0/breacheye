@@ -84,17 +84,137 @@ All independent. Start immediately.
 | 2 | [#9](https://github.com/rafcis0/breacheye/issues/9) | Contract Validation Tests | S | — | `aria/contract-tests` |
 | 3 | [#14](https://github.com/rafcis0/breacheye/issues/14) | Palantir Ontology Prep | S | — | `aria/palantir-prep` |
 
-## Integration Gates
+## Completed Tracks
 
-| Hour | Gate | What Must Work | Who |
-|------|------|----------------|-----|
-| H+2 | Frame contract | Rafa's stub pipeline receives frames, returns detections | Alpha + Rafa |
-| H+4 | Detection loop | Nav interpreter consuming decisions, harness executing commands | Alpha |
-| H+6 | **CRITICAL** | Full loop: frames → pipeline → nav → state machine → drone moves → new frame | Alpha + Beta |
-| H+8 | Palantir go/no-go | If core works: start Theta. If not: all hands on demo polish. | PM call |
-| H+10 | Stress test | 5-minute autonomous flight, count POIs, check stability | All |
-| H+14 | Demo rehearsal | Full pitch + live demo dry run | All |
-| H+16 | Fallback locked | Pre-recorded backup confirmed working | Beta |
+### Core System (DONE — PRs #1-#55)
+
+All original Alpha, Beta, Aria, and Theta tickets complete:
+- Flight harness, state machine, battery monitor, operator controls
+- Nav interpreter with confidence thresholding + error escalation
+- UI scaffold, telemetry HUD, detection overlay, tactical map, demo modes
+- Palantir batch writer, mock data generators, contract tests
+
+### Frontend Redesign (DONE — PRs #68-#71)
+
+All 12 redesign tickets (#56-#67) complete:
+- Tailwind v4 + shadcn/ui + OKLCH design tokens
+- Three-zone layout (video + right panel + bottom bar)
+- Glassmorphism panels, compact header telemetry, status bar
+- Flight controls safety (hold-to-activate EMERGENCY)
+- Mission-phase state management (pre-flight / active / post-flight)
+- Map3D orbit controls + post-flight promotion
+
+---
+
+## Active Feature Tracks
+
+### Smoke Test — Cooper (Manual)
+
+| Issue | Title | Tier | Status |
+|-------|-------|------|--------|
+| [#87](https://github.com/rafcis0/breacheye/issues/87) | Full-stack smoke test: models + pipeline + flight | Moderate | TODO |
+
+No code changes. Download weights, install model deps, configure env, validate real VLM inference.
+
+### Depth-Driven Obstacle Avoidance — Aria
+
+Sequential. Depth pipeline must be functional.
+
+```
+#72 Depth proximity alert ──► #73 Nav forward guard ──► #74 Threshold tuning
+```
+
+| Order | Issue | Title | Tier | Depends On |
+|:-----:|-------|-------|------|------------|
+| 1 | [#72](https://github.com/rafcis0/breacheye/issues/72) | Depth proximity alert publisher in rafa pipeline | Simple | Depth pipeline |
+| 2 | [#73](https://github.com/rafcis0/breacheye/issues/73) | NavInterpreter depth-aware forward guard | Moderate | #72 |
+| 3 | [#74](https://github.com/rafcis0/breacheye/issues/74) | Depth threshold tuning for indoor environments | Complex | #73 |
+
+### Autonomous Doorway Transit — Aria
+
+Sequential. Detection pipeline must be functional.
+
+```
+#75 Doorway detection ──► #76 Transit sequence ──► #77 Multi-room tracking
+```
+
+| Order | Issue | Title | Tier | Depends On |
+|:-----:|-------|-------|------|------------|
+| 1 | [#75](https://github.com/rafcis0/breacheye/issues/75) | Doorway detection and centering logic | Simple | Detection pipeline |
+| 2 | [#76](https://github.com/rafcis0/breacheye/issues/76) | Doorway transit sequence in navigation logic | Complex | #75 |
+| 3 | [#77](https://github.com/rafcis0/breacheye/issues/77) | Multi-room state tracking in ExplorationTracker | Simple | #76 |
+
+### Post-Flight Building Report — Rafa
+
+#80 (schema) first, then #78 + #79 sequential.
+
+```
+#80 Schema definition ──► #78 Data accumulator ──► #79 Report generator
+```
+
+| Order | Issue | Title | Tier | Depends On |
+|:-----:|-------|-------|------|------------|
+| 1 | [#80](https://github.com/rafcis0/breacheye/issues/80) | Building report schema definition | Trivial | — |
+| 2 | [#78](https://github.com/rafcis0/breacheye/issues/78) | Flight data accumulator for post-flight report | Simple | #80 |
+| 3 | [#79](https://github.com/rafcis0/breacheye/issues/79) | Post-flight building report generator | Moderate | #78 |
+
+### VPS Floor Scanner — CLOSED
+
+~~#81, #82, #83~~ — Closed. Tello has no downward camera. Floor plan will be synthesized post-flight from accumulated POIs, depth-inferred walls, and dead-reckoned drone path. Folded into building report track (#78-#80).
+
+### Depth-Based Room Volume Estimation — CLOSED
+
+~~#84, #85, #86~~ — Closed. Depth Anything V2 produces relative depth, not metric — can't derive room dimensions. Dead-reckoned pose drift makes multi-angle accumulation unreliable. Room characterization served by VLM descriptions (already in pipeline) and post-flight COLMAP (already scoped).
+
+### Palantir Stretch (unchanged)
+
+| Order | Issue | Title | Tier | Depends On |
+|:-----:|-------|-------|------|------------|
+| 1 | [#12](https://github.com/rafcis0/breacheye/issues/12) | Palantir AIP: Ontology + Workshop + Chatbot | L | On-site staff |
+| 2 | [#25](https://github.com/rafcis0/breacheye/issues/25) | Workshop COP dashboard | M | #12 |
+| 3 | [#27](https://github.com/rafcis0/breacheye/issues/27) | AIP tactical chatbot | S | #25 |
+
+### Rafa's Open ML Tickets
+
+| Issue | Title | Status |
+|-------|-------|--------|
+| [#41](https://github.com/rafcis0/breacheye/issues/41) | Benchmark and reduce Qwen navigation latency | In progress |
+| [#42](https://github.com/rafcis0/breacheye/issues/42) | Harden offline Tello run mode and log bundle | Done |
+| [#43](https://github.com/rafcis0/breacheye/issues/43) | Real Tello hardware smoke test (model mode) | Blocked on #87 |
+| [#44](https://github.com/rafcis0/breacheye/issues/44) | Moondream MPS/Metal blocker | Blocked (dead path) |
+| [#45](https://github.com/rafcis0/breacheye/issues/45) | First-pass 3D map artifact | Partial |
+| [#46](https://github.com/rafcis0/breacheye/issues/46) | FastVLM benchmark | Not started |
+| [#47](https://github.com/rafcis0/breacheye/issues/47) | Demo script/checklist | Not started |
+| [#48](https://github.com/rafcis0/breacheye/issues/48) | FlyMeThrough 3D reconstruction | Not started |
+| [#49](https://github.com/rafcis0/breacheye/issues/49) | Spatial map memory for nav VLM | Partial |
+
+---
+
+## Full Dependency Overview
+
+```
+                         COMPLETED
+    ┌─────────────────────────────────────────────┐
+    │ Core system (Alpha/Beta/Aria/Theta) ✓       │
+    │ Frontend redesign (#56-#67) ✓               │
+    └─────────────────────────────────────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+    ┌──────────────┐ ┌──────────┐ ┌──────────────┐
+    │ #87 Smoke    │ │ ARIA     │ │ RAFA         │
+    │ Test (Cooper)│ │          │ │              │
+    └──────────────┘ │ #72→#73  │ │ #80→#78→#79 │
+                     │   →#74   │ │ (report)     │
+                     │ (depth   │ │              │
+                     │  avoid)  │ │ #81→#82→#83 │
+                     │          │ │ (floor scan) │
+                     │ #75→#76  │ │              │
+                     │   →#77   │ │ #84→#85→#86 │
+                     │ (doorway │ │ (room volume)│
+                     │  transit)│ │              │
+                     └──────────┘ └──────────────┘
+```
 
 ## How to Use This
 

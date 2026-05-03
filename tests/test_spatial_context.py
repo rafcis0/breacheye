@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from breacheye.rafa.schemas import BBox2D, DepthOutput, Detection, DetectionOutput, FrameInput
-from breacheye.rafa.spatial_context import build_spatial_context, summarize_spatial_context
+from breacheye.rafa.spatial_context import build_obstacle_alert, build_spatial_context, summarize_spatial_context
 
 
 def test_build_spatial_context_from_current_frame_outputs_frontier_and_objects() -> None:
