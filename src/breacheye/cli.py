@@ -55,6 +55,12 @@ def main() -> None:
     fly.add_argument("--run-id")
     fly.add_argument("--frame-source", choices=["auto", "synthetic", "harness", "tello"], default="auto")
     fly.add_argument("--auto-takeoff", action="store_true", help="Issue takeoff once the loop is running.")
+    fly.add_argument(
+        "--takeoff-climb-cm",
+        type=int,
+        default=100,
+        help="Extra climb after auto-takeoff to reduce ground-effect drift. Use 0 to disable.",
+    )
     fly.add_argument("--duration-s", type=float, help="Stop the launched loop after this many seconds.")
 
     args = parser.parse_args()
@@ -84,6 +90,7 @@ def main() -> None:
                 run_id=args.run_id,
                 frame_source=args.frame_source,
                 auto_takeoff=args.auto_takeoff,
+                takeoff_climb_cm=args.takeoff_climb_cm,
                 duration_s=args.duration_s,
             )
         )
@@ -139,6 +146,7 @@ def _fly(
     run_id: str | None,
     frame_source: str,
     auto_takeoff: bool,
+    takeoff_climb_cm: int,
     duration_s: float | None,
 ) -> int:
     from breacheye.flight import FlightLaunchConfig, run_flight
@@ -154,6 +162,7 @@ def _fly(
             run_id=run_id,
             frame_source=frame_source,
             auto_takeoff=auto_takeoff,
+            takeoff_climb_cm=takeoff_climb_cm,
             duration_s=duration_s,
         )
     )

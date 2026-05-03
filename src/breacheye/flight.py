@@ -20,6 +20,7 @@ class FlightLaunchConfig:
     run_id: str | None = None
     frame_source: str = "auto"
     auto_takeoff: bool = False
+    takeoff_climb_cm: int = 100
     duration_s: float | None = None
 
     @property
@@ -110,6 +111,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
         run_id=run_id,
         frame_source=config.frame_source,
         auto_takeoff=config.auto_takeoff,
+        takeoff_climb_cm=config.takeoff_climb_cm,
         duration_s=config.duration_s,
     )
     os.environ["BREACHEYE_RUN_ID"] = run_id
@@ -131,7 +133,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
                 time.sleep(0.5)
 
         if config.auto_takeoff:
-            _post_takeoff(config.base_url)
+            _post_takeoff(config.base_url, climb_cm=config.takeoff_climb_cm)
 
         deadline = time.monotonic() + config.duration_s if config.duration_s else None
         while True:
@@ -222,7 +224,7 @@ def _wait_for_harness(base_url: str, timeout_s: float = 20.0) -> None:
     raise RuntimeError(f"harness did not become ready at {base_url}: {last_error}")
 
 
-def _post_takeoff(base_url: str) -> None:
+def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
     import httpx
 
     response = httpx.post(
@@ -232,6 +234,53 @@ def _post_takeoff(base_url: str) -> None:
     )
     response.raise_for_status()
     print(f"[flight] takeoff response: {response.text}", flush=True)
+
+    climb_cm = max(0, min(150, int(climb_cm)))
+    if climb_cm <= 0:
+        return
+    if not _wait_for_flying(base_url):
+        print("[flight] skipping takeoff climb; harness did not report flying", flush=True)
+        return
+
+    speed_cm_s = 30
+    remaining_cm = climb_cm
+    pulse_index = 0
+    while remaining_cm > 0:
+        pulse_index += 1
+        pulse_cm = min(30, remaining_cm)
+        duration_ms = max(300, min(1000, int(pulse_cm / speed_cm_s * 1000)))
+        response = httpx.post(
+            f"{base_url}/commands",
+            json={
+                "type": "rc_control",
+                "issued_by": "flight_launcher_takeoff_climb",
+                "ttl_ms": duration_ms + 200,
+                "payload": {"up_down": speed_cm_s, "duration_ms": duration_ms},
+            },
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        print(
+            f"[flight] takeoff climb pulse {pulse_index} {pulse_cm}cm/{climb_cm}cm response: {response.text}",
+            flush=True,
+        )
+        remaining_cm -= pulse_cm
+        time.sleep(0.15)
+
+
+def _wait_for_flying(base_url: str, timeout_s: float = 5.0) -> bool:
+    import httpx
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.get(f"{base_url}/health", timeout=1.0)
+            if response.status_code == 200 and response.json().get("telemetry", {}).get("flying"):
+                return True
+        except Exception:
+            pass
+        time.sleep(0.25)
+    return False
 
 
 def _post_shutdown_land(base_url: str) -> None:
