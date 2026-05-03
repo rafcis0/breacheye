@@ -1011,12 +1011,12 @@ class TestNavInterpreterRunOnce:
         assert posted[0].type == CommandType.RC_CONTROL
         assert interp._consecutive_failures == 0
 
-    async def test_run_once_proceeds_when_not_flying(self) -> None:
-        """When flying=False the guard returns None (no override) and nav executes.
+    async def test_run_once_skips_when_not_flying(self) -> None:
+        """When flying=False the guard returns _GUARD_SKIP and run_once returns False.
 
-        The grounded skip was removed in fix-nav-grounded: the safety controller
-        gates rc_control on flying state, so a redundant check here caused a
-        startup race where the drone drifted with no nav control after takeoff.
+        Nav commands must not be posted to a grounded drone. The safety controller
+        is the fallback, but the nav interpreter should not post commands it knows
+        will fail.
         """
         interp = self._make_interp()
         nav = make_nav_output("move_forward", confidence=0.9)
@@ -1025,9 +1025,9 @@ class TestNavInterpreterRunOnce:
 
         result = await interp.run_once()
 
-        # Guard returns None (no override) when not flying, so action proceeds
-        assert result is True
-        assert len(posted) == 1
+        # Guard skips when not flying — no command posted, returns False
+        assert result is False
+        assert len(posted) == 0
 
     async def test_run_once_gates_low_confidence(self) -> None:
         """Confidence < 0.5 → failure handler (hover), not executed."""

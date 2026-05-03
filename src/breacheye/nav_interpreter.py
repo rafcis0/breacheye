@@ -247,7 +247,16 @@ class NavInterpreter:
         health = await self._get_health_payload()
         telemetry = health.get("telemetry", {}) if health else {}
         if telemetry.get("flying") is not True:
-            return None
+            return _GUARD_SKIP
+
+        if health.get("accepts_nav") is False:
+            self.logger.event(
+                "navigation_paused_guard",
+                frame_id=frame_id,
+                requested_action=decision.action,
+            )
+            logger.info("paused — skipping nav frame=%d action=%s", frame_id, decision.action)
+            return _GUARD_SKIP
 
         now = monotonic()
         if self._first_airborne_at is None:
