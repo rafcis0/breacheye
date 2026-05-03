@@ -1,9 +1,13 @@
+import { useRef } from 'react'
 import VideoPanel from './components/VideoPanel'
+import DetectionOverlay from './components/DetectionOverlay'
 import PlaceholderCard from './components/PlaceholderCard'
 import TelemetryHUD from './components/TelemetryHUD'
 import './App.css'
 
 export default function App() {
+  const videoFrameRef = useRef(null)
+
   return (
     <div className="app">
       <header className="app__header">
@@ -18,12 +22,14 @@ export default function App() {
 
       <main className="app__body">
         <section className="app__video">
-          <VideoPanel />
+          <div className="video-overlay-container">
+            <VideoPanel frameRef={videoFrameRef} />
+            <DetectionOverlay containerRef={videoFrameRef} />
+          </div>
         </section>
 
         <aside className="app__sidebar">
           <TelemetryHUD />
-          <PlaceholderCard label="DETECTION OVERLAY" ticket="23" />
           <PlaceholderCard label="TACTICAL MAP" ticket="25" />
         </aside>
       </main>

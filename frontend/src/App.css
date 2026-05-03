@@ -337,6 +337,23 @@
   margin: 4px 14px;
 }
 
+/* ── Video overlay container ─────────────────────────────── */
+
+.video-overlay-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.detection-overlay__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
 /* ── Responsive: 1920×1080 primary target ───────────────── */
 
 @media (min-width: 1600px) {

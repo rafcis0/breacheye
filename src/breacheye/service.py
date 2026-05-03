@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -16,6 +17,10 @@ from breacheye.models import CommandResult, CommandStatus, DroneCommand
 from breacheye.safety import SafetyController
 from breacheye.video import FrameStore, TelloVideoPump
 
+log = logging.getLogger(__name__)
+
+_ZMQ_DETECTIONS_PORT = 5556
+
 
 class HarnessRuntime:
     """Owns the process-local drone resources exposed by the HTTP/WebSocket API."""
@@ -27,6 +32,9 @@ class HarnessRuntime:
         self.adapter = make_adapter(mode)
         self.safety = SafetyController(self.adapter, self.bus)
         self.video_pump: TelloVideoPump | None = None
+        self._zmq_task: asyncio.Task | None = None
+        self._zmq_socket = None
+        self._zmq_ctx = None
 
     async def start(self) -> None:
         await self.adapter.connect()
@@ -34,8 +42,72 @@ class HarnessRuntime:
         if self.mode == "tello":
             self.video_pump = TelloVideoPump(self.adapter, self.frame_store, self.bus)
             await self.video_pump.start()
+        self._start_zmq_bridge()
+
+    def _start_zmq_bridge(self) -> None:
+        try:
+            import zmq
+            import zmq.asyncio as azmq
+
+            self._zmq_ctx = azmq.Context()
+            self._zmq_socket = self._zmq_ctx.socket(zmq.SUB)
+            self._zmq_socket.connect(f"tcp://localhost:{_ZMQ_DETECTIONS_PORT}")
+            self._zmq_socket.setsockopt(zmq.SUBSCRIBE, b"")
+            self._zmq_task = asyncio.create_task(
+                self._zmq_reader(), name="zmq-detections-bridge"
+            )
+            log.info("ZMQ detections bridge started on port %d", _ZMQ_DETECTIONS_PORT)
+        except ImportError:
+            log.warning("pyzmq not installed — detection overlay bridge disabled")
+        except Exception as exc:
+            log.warning("ZMQ bridge init failed (%s) — detection overlay disabled", exc)
+            self._cleanup_zmq()
+
+    async def _zmq_reader(self) -> None:
+        assert self._zmq_socket is not None
+        backoff = 1.0
+        max_backoff = 30.0
+        while True:
+            try:
+                while True:
+                    raw = await self._zmq_socket.recv()
+                    try:
+                        payload = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        log.debug("ZMQ: bad JSON from detections channel: %s", exc)
+                        continue
+                    await self.bus.publish("drone.detections", payload)
+                    backoff = 1.0
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                log.warning("ZMQ reader failed: %s — retrying in %.0fs", exc, backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
+
+    def _cleanup_zmq(self) -> None:
+        if self._zmq_socket is not None:
+            try:
+                self._zmq_socket.close()
+            except Exception:
+                pass
+            self._zmq_socket = None
+        if self._zmq_ctx is not None:
+            try:
+                self._zmq_ctx.term()
+            except Exception:
+                pass
+            self._zmq_ctx = None
 
     async def stop(self) -> None:
+        if self._zmq_task is not None:
+            self._zmq_task.cancel()
+            try:
+                await self._zmq_task
+            except asyncio.CancelledError:
+                pass
+            self._zmq_task = None
+        self._cleanup_zmq()
         if self.video_pump is not None:
             await self.video_pump.stop()
         await self.safety.stop()
@@ -127,7 +199,7 @@ def create_app(mode: str = "sim") -> FastAPI:
     @app.websocket("/events")
     async def events(websocket: WebSocket):
         await websocket.accept()
-        topics = ["drone.telemetry", "drone.command_results", "drone.frames.llm"]
+        topics = ["drone.telemetry", "drone.command_results", "drone.frames.llm", "drone.detections"]
         queues = {topic: await runtime.bus.subscribe(topic) for topic in topics}
         tasks: set[asyncio.Task] = set()
         try:
