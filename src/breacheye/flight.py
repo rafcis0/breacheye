@@ -316,6 +316,176 @@ def _stop_flight_processes(procs: Sequence[tuple[str, subprocess.Popen]], base_u
     _stop_processes(harness)
 
 
+def build_demo_specs(
+    mode: str,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    fps: float = 5.0,
+    video_path: str | None = None,
+    log_dir: str = "logs",
+    run_id: str | None = None,
+) -> list[ProcessSpec]:
+    base_url = f"http://{host}:{port}"
+    root = _repo_root()
+    specs: list[ProcessSpec] = []
+
+    # Harness is always first
+    harness_mode = "tello" if mode == "live" else "sim"
+    specs.append(ProcessSpec(
+        "harness",
+        [sys.executable, "-m", "breacheye.cli", "serve",
+         "--mode", harness_mode, "--host", host, "--port", str(port)],
+    ))
+
+    if mode == "live":
+        specs.append(ProcessSpec(
+            "rafa",
+            [sys.executable, "-m", "breacheye.cli", "rafa",
+             "--mode", "models", "--log-dir", log_dir, *_run_id_args(run_id)],
+        ))
+        specs.append(ProcessSpec(
+            "frame_publisher",
+            [sys.executable, str(root / "integration" / "frame_publisher.py"),
+             "--fps", str(fps), "--tello", "--log-dir", log_dir, *_run_id_args(run_id)],
+        ))
+    elif mode == "recorded":
+        playback_args = [
+            sys.executable, str(root / "demo" / "playback.py"),
+            "--video", video_path or str(root / "demo" / "sample.mp4"),
+            "--detections", str(root / "demo" / "mock_detections.json"),
+            "--loop",
+        ]
+        if fps:
+            playback_args.extend(["--fps", str(fps)])
+        specs.append(ProcessSpec("playback", playback_args))
+        specs.append(ProcessSpec(
+            "mock_navigation",
+            [sys.executable, str(root / "demo" / "mock_navigation.py"),
+             "--frames", "999999", "--pattern", "room_sweep", "--fps", "2"],
+        ))
+        specs.append(ProcessSpec(
+            "mock_telemetry",
+            [sys.executable, str(root / "demo" / "mock_telemetry.py"),
+             "--frames", "999999", "--fps", "1"],
+        ))
+    elif mode == "mock":
+        specs.append(ProcessSpec(
+            "frame_publisher",
+            [sys.executable, str(root / "integration" / "frame_publisher.py"),
+             "--fps", str(fps), "--log-dir", log_dir, *_run_id_args(run_id)],
+        ))
+        specs.append(ProcessSpec(
+            "mock_detections",
+            [sys.executable, str(root / "demo" / "mock_detections.py"),
+             "--frames", "999999", "--fps", "10"],
+        ))
+        specs.append(ProcessSpec(
+            "mock_navigation",
+            [sys.executable, str(root / "demo" / "mock_navigation.py"),
+             "--frames", "999999", "--pattern", "room_sweep", "--fps", "2"],
+        ))
+        specs.append(ProcessSpec(
+            "mock_telemetry",
+            [sys.executable, str(root / "demo" / "mock_telemetry.py"),
+             "--frames", "999999", "--fps", "1"],
+        ))
+
+    # Nav interpreter in ALL modes — bridges ZMQ 5558 → harness /commands
+    specs.append(ProcessSpec(
+        "nav_interpreter",
+        [sys.executable, "-m", "breacheye.cli", "nav",
+         "--command-url", f"{base_url}/commands", "--log-dir", log_dir, *_run_id_args(run_id)],
+    ))
+
+    return specs
+
+
+def run_demo(
+    mode: str = "live",
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    fps: float = 5.0,
+    video_path: str | None = None,
+    log_dir: str = "logs",
+    run_id: str | None = None,
+    duration_s: float | None = None,
+) -> int:
+    run_id = run_id or time.strftime("demo-%Y%m%dT%H%M%SZ", time.gmtime())
+    resolved_mode = _resolve_demo_mode(mode, video_path)
+
+    print(f"\n{'=' * 60}", flush=True)
+    print(f"  BreachEye Demo — mode: {resolved_mode}", flush=True)
+    if resolved_mode != mode:
+        print(f"  (auto-degraded from {mode})", flush=True)
+    print(f"  harness: http://{host}:{port}", flush=True)
+    print(f"{'=' * 60}\n", flush=True)
+
+    base_url = f"http://{host}:{port}"
+    os.environ["BREACHEYE_RUN_ID"] = run_id
+    os.environ["BREACHEYE_LOG_DIR"] = log_dir
+    if resolved_mode == "live":
+        _apply_local_model_defaults(os.environ, "models")
+
+    specs = build_demo_specs(resolved_mode, host, port, fps, video_path, log_dir, run_id)
+    procs: list[tuple[str, subprocess.Popen]] = []
+
+    try:
+        for spec in specs:
+            print(f"[demo] starting {spec.name}", flush=True)
+            procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy(), start_new_session=True)))
+            if spec.name == "harness":
+                _wait_for_harness(base_url)
+            elif spec.name in ("rafa", "playback"):
+                time.sleep(0.75)
+            elif spec.name == "frame_publisher":
+                time.sleep(0.5)
+
+        print("\n[demo] all components running — Ctrl+C to stop\n", flush=True)
+
+        deadline = time.monotonic() + duration_s if duration_s else None
+        while True:
+            for name, proc in procs:
+                code = proc.poll()
+                if code is not None:
+                    print(f"[demo] {name} exited with {code}", flush=True)
+                    return code
+            if deadline and time.monotonic() >= deadline:
+                print("[demo] duration reached; stopping", flush=True)
+                return 0
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\n[demo] interrupted; stopping", flush=True)
+        return 130
+    finally:
+        _stop_flight_processes(procs, base_url)
+
+
+def _resolve_demo_mode(mode: str, video_path: str | None) -> str:
+    if mode == "live":
+        if not _check_tello_connection():
+            print("[demo] WARNING: Tello not available — falling back to recorded mode", flush=True)
+            mode = "recorded"
+    if mode == "recorded":
+        vpath = video_path or str(_repo_root() / "demo" / "sample.mp4")
+        if not Path(vpath).exists():
+            print(f"[demo] WARNING: video not found ({vpath}) — falling back to mock mode", flush=True)
+            mode = "mock"
+    return mode
+
+
+def _check_tello_connection(timeout: float = 5.0) -> bool:
+    """Try connecting to Tello. Returns True if successful within timeout."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "from djitellopy import Tello; t = Tello(); t.connect(); print('ok')"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return result.returncode == 0 and "ok" in result.stdout
+    except (subprocess.TimeoutExpired, Exception):
+        return False
+
+
 def _stop_processes(procs: Sequence[tuple[str, subprocess.Popen]]) -> None:
     for name, proc in reversed(procs):
         if proc.poll() is not None:
