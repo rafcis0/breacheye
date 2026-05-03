@@ -56,7 +56,22 @@ Every map event should also be written into the same run-scoped JSONL logs as fr
 - POI detections
 - emitted map events
 
-## Current First Pass
+## Current First Pass Is Not A Building Map
+
+The current report map is only a debug artifact. It stacks relative depth samples from independent frames, so it can show whether depth outputs are nonblank, but it does not estimate camera pose, align frames into one coordinate system, reconstruct walls, or locate people/doors in the actual building.
+
+The FlyMeThrough-style system we need is different:
+
+1. Extract RGB keyframes from drone video.
+2. Estimate camera extrinsics/trajectory with SfM or SLAM.
+3. Reconstruct sparse/dense geometry from posed images.
+4. Segment people, doors, stairs, hazards, and user-defined POIs across frames.
+5. Project masks/detections into the reconstructed 3D coordinate system.
+6. Review the semantic 3D map in the report/UI.
+
+The FlyMeThrough paper used RGB video, extracted frames at `2 FPS`, estimated camera extrinsics, reconstructed the space with SfM/photogrammetry, then used SAM2-assisted human annotation and depth-guided raycasting to place POIs into the 3D map. Their evaluation also notes a practical issue we should expect: open-source COLMAP-style SfM can drift in large/repetitive indoor spaces, while a commercial photogrammetry tool was more robust for their tested building-scale scans.
+
+## Debug Depth Artifact
 
 Rafa writes both human and numeric depth artifacts:
 
@@ -82,9 +97,40 @@ logs/<run_id>/map/relative-depth-summary.json
 
 This is not metric reconstruction. It stacks relative monocular depth slices into a rough point cloud so we can see whether the depth stream is stable enough to justify heavier SLAM/SfM work.
 
+## Reconstruction Workspace
+
+Prepare a true reconstruction workspace from a video segment:
+
+```bash
+python ai/reconstruction_prep.py \
+  --video /Users/rafael/Downloads/drone_mock.mp4 \
+  --run-id "$BREACHEYE_RUN_ID" \
+  --log-dir logs \
+  --start-s 125 \
+  --fps 2
+```
+
+Outputs:
+
+```text
+logs/<run_id>/reconstruction/images/frame-000000.jpg
+logs/<run_id>/reconstruction/manifest.json
+```
+
+If COLMAP is installed, inspect or run the open-source SfM pass:
+
+```bash
+python ai/reconstruction_colmap.py --workspace logs/<run_id>/reconstruction --dry-run
+python ai/reconstruction_colmap.py --workspace logs/<run_id>/reconstruction
+```
+
+COLMAP is not currently installed on this Mac, so the committed script is a repeatable integration point rather than a completed reconstruction result.
+
 ## Better Later
 
 - Camera calibration for Tello intrinsics.
-- Visual odometry or SLAM (`ORB-SLAM`, `OpenVINS`, `COLMAP` offline).
+- Visual odometry or SLAM (`ORB-SLAM`, `OpenVINS`, `COLMAP`, `MAST3R-SLAM` offline).
+- SAM2/Grounded-SAM style mask propagation for people, doors, stairs, and hazards.
+- Raycast segmentation masks into the SfM/SLAM map to create semantic 3D POIs.
 - Depth Anything V2 metric-ish calibration against known Tello movement increments.
 - Export point cloud/mesh for the UI or Foundry attachment.
