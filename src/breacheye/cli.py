@@ -98,7 +98,7 @@ def main() -> None:
 
     calibrate = subparsers.add_parser(
         "calibrate",
-        help="Live hardware calibration: fly each NavigationAction and verify physical motion.",
+        help="Aggressive flight test: 360° rotations, 3ft circles, and a flip.",
     )
     calibrate.add_argument(
         "--harness-url",
@@ -106,32 +106,45 @@ def main() -> None:
         help="Base URL of the running harness (default: http://127.0.0.1:8000)",
     )
     calibrate.add_argument(
-        "--observe-s",
-        type=float,
-        default=3.0,
-        metavar="SECONDS",
-        help="Seconds to pause after each command for visual observation (default: 3)",
+        "--yaw-speed",
+        type=int,
+        default=30,
+        help="RC yaw value for rotations, 1-100 (default: 30)",
     )
     calibrate.add_argument(
-        "--speed",
+        "--rotation-steps",
         type=int,
-        default=25,
-        metavar="CM_S",
-        help="Movement speed in cm/s, 1-35 (default: 25)",
+        default=12,
+        help="Number of steps per full rotation (default: 12)",
     )
     calibrate.add_argument(
-        "--distance-cm",
+        "--circle-speed",
         type=int,
-        default=35,
-        metavar="CM",
-        help="Translation distance in cm (default: 35)",
+        default=30,
+        help="Forward speed during circles, 1-100 (default: 30)",
     )
     calibrate.add_argument(
-        "--degrees",
+        "--circle-yaw",
         type=int,
-        default=45,
-        metavar="DEG",
-        help="Rotation angle in degrees (default: 45)",
+        default=20,
+        help="Yaw rate during circles — lower = wider radius (default: 20)",
+    )
+    calibrate.add_argument(
+        "--circle-steps",
+        type=int,
+        default=18,
+        help="Number of steps per full circle (default: 18)",
+    )
+    calibrate.add_argument(
+        "--step-ms",
+        type=int,
+        default=1000,
+        help="Duration of each RC sub-step in ms (default: 1000)",
+    )
+    calibrate.add_argument(
+        "--no-flip",
+        action="store_true",
+        help="Skip flip maneuver",
     )
     calibrate.add_argument(
         "--takeoff-climb-cm",
@@ -245,18 +258,17 @@ def main() -> None:
         from breacheye.calibration import CalibConfig, run_calibration
 
         cfg = CalibConfig(
-            speed=args.speed,
-            distance_cm=args.distance_cm,
-            degrees=args.degrees,
-            takeoff_climb_cm=args.takeoff_climb_cm,
-            min_battery=args.min_battery,
-            allow_hover_trim=args.allow_hover_trim,
-            confirm_each=not args.yes,
+            yaw_speed=args.yaw_speed,
+            rotation_steps=args.rotation_steps,
+            circle_forward=args.circle_speed,
+            circle_yaw=args.circle_yaw,
+            circle_steps=args.circle_steps,
+            step_duration_ms=args.step_ms,
+            enable_flip=not args.no_flip,
         )
         raise SystemExit(
             run_calibration(
                 base_url=args.harness_url,
-                observe_s=args.observe_s,
                 cfg=cfg,
                 log_dir=args.log_dir,
                 run_id=args.run_id,

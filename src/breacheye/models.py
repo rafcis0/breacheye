@@ -14,6 +14,7 @@ class CommandType(StrEnum):
     EMERGENCY = "emergency"
     HOVER = "hover"
     RC_CONTROL = "rc_control"
+    FLIP = "flip"
 
 
 class CommandStatus(StrEnum):
@@ -31,6 +32,10 @@ class RCControlPayload(BaseModel):
     duration_ms: int = Field(default=250, ge=50, le=2000)
 
 
+class FlipPayload(BaseModel):
+    direction: Literal["left", "right", "forward", "back"] = "forward"
+
+
 class DroneCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -38,14 +43,23 @@ class DroneCommand(BaseModel):
     type: CommandType
     issued_by: str = "unknown"
     ttl_ms: int | None = Field(default=None, ge=50, le=5000)
-    payload: RCControlPayload | None = None
+    payload: RCControlPayload | FlipPayload | None = None
 
     @model_validator(mode="after")
     def validate_payload(self) -> "DroneCommand":
-        if self.type == CommandType.RC_CONTROL and self.payload is None:
-            raise ValueError("rc_control commands require payload")
-        if self.type != CommandType.RC_CONTROL and self.payload is not None:
-            raise ValueError(f"{self.type} commands must not include payload")
+        if self.type == CommandType.RC_CONTROL:
+            if self.payload is None:
+                raise ValueError("rc_control commands require payload")
+            if not isinstance(self.payload, RCControlPayload):
+                raise ValueError("rc_control commands require RCControlPayload")
+        elif self.type == CommandType.FLIP:
+            if self.payload is None:
+                raise ValueError("flip commands require payload")
+            if not isinstance(self.payload, FlipPayload):
+                raise ValueError("flip commands require FlipPayload")
+        else:
+            if self.payload is not None:
+                raise ValueError(f"{self.type} commands must not include payload")
         return self
 
 
