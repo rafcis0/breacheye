@@ -56,8 +56,9 @@ class RafaPipelineConfig:
 
 
 class RafaPipeline:
-    def __init__(self, config: RafaPipelineConfig | None = None) -> None:
+    def __init__(self, config: RafaPipelineConfig | None = None, bus: object | None = None) -> None:
         self.config = config or RafaPipelineConfig()
+        self._bus = bus
         self._context = None
         self._receiver: ZmqFrameReceiver | None = None
         self._sockets: dict[str, object] = {}
