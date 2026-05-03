@@ -97,6 +97,18 @@ async def test_commands_dispatch_to_sdk(fake_tello) -> None:
 
 
 @pytest.mark.asyncio
+async def test_hover_uses_configured_trim(fake_tello, monkeypatch) -> None:
+    monkeypatch.setenv("BREACHEYE_TELLO_HOVER_LEFT_RIGHT", "-4")
+    monkeypatch.setenv("BREACHEYE_TELLO_HOVER_FORWARD_BACK", "6")
+    adapter = TelloAdapter()
+    await adapter.connect()
+
+    await adapter.hover()
+
+    assert fake_tello[0].calls[-1] == ("send_rc_control", (-4, 6, 0, 0))
+
+
+@pytest.mark.asyncio
 async def test_get_state_maps_sdk_fields(fake_tello) -> None:
     adapter = TelloAdapter()
     await adapter.connect()

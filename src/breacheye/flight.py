@@ -143,6 +143,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
                 time.sleep(0.5)
 
         if config.auto_takeoff:
+            _wait_for_rafa_navigation(config.log_dir, run_id, prefix="[flight]")
             _post_takeoff(config.base_url, climb_cm=config.takeoff_climb_cm)
 
         deadline = time.monotonic() + config.duration_s if config.duration_s else None
@@ -473,6 +474,7 @@ def run_demo(
                 time.sleep(0.5)
 
         if resolved_mode == "live" and auto_takeoff:
+            _wait_for_rafa_navigation(log_dir, run_id, prefix="[demo]")
             _post_takeoff(base_url, climb_cm=takeoff_climb_cm)
 
         print("\n[demo] all components running — Ctrl+C to stop\n", flush=True)
@@ -509,6 +511,30 @@ def _resolve_demo_mode(mode: str, video_path: str | None) -> str:
             print(f"[demo] WARNING: video not found ({vpath}) — falling back to mock mode", flush=True)
             mode = "mock"
     return mode
+
+
+def _wait_for_rafa_navigation(log_dir: str, run_id: str, prefix: str, timeout_s: float = 45.0) -> None:
+    path = Path(log_dir).expanduser() / f"{run_id}-rafa.jsonl"
+    deadline = time.monotonic() + timeout_s
+    print(f"{prefix} waiting for first Rafa navigation decision", flush=True)
+    while time.monotonic() < deadline:
+        if _rafa_log_has_navigation(path):
+            print(f"{prefix} Rafa navigation is warm", flush=True)
+            return
+        time.sleep(0.25)
+    raise RuntimeError(f"Rafa did not publish a navigation decision within {timeout_s:.0f}s; refusing auto-takeoff")
+
+
+def _rafa_log_has_navigation(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        for line in path.read_text(errors="ignore").splitlines():
+            if '"event":"publish"' in line and '"channel":"navigation"' in line:
+                return True
+    except OSError:
+        return False
+    return False
 
 
 def _check_tello_connection(timeout: float = 5.0) -> bool:

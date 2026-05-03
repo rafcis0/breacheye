@@ -4,6 +4,8 @@ from breacheye.flight import (
     _post_command_checked,
     _post_shutdown_land,
     _post_takeoff,
+    _rafa_log_has_navigation,
+    _wait_for_rafa_navigation,
     build_process_specs,
 )
 
@@ -143,3 +145,24 @@ def test_post_command_checked_raises_on_failed_body(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="no lift"):
         _post_command_checked("http://harness", {"type": "takeoff"}, label="takeoff")
+
+
+def test_rafa_log_has_navigation(tmp_path) -> None:
+    path = tmp_path / "run-rafa.jsonl"
+    path.write_text('{"event":"publish","channel":"navigation"}\n', encoding="utf-8")
+
+    assert _rafa_log_has_navigation(path) is True
+
+
+def test_wait_for_rafa_navigation_refuses_timeout(tmp_path, monkeypatch) -> None:
+    current = {"value": 0.0}
+
+    def fake_monotonic():
+        current["value"] += 1.0
+        return current["value"]
+
+    monkeypatch.setattr("time.monotonic", fake_monotonic)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="refusing auto-takeoff"):
+        _wait_for_rafa_navigation(str(tmp_path), "missing", "[test]", timeout_s=1.0)

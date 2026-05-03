@@ -120,6 +120,14 @@ logs/<run_id>/map/vggt-summary.json
 
 The live frontend polls `/map/point-cloud/latest`, so the 3D render updates automatically when either the relative-depth mapper or VGGT-MPS writes a new artifact.
 
+The VGGT artifact is an image-colored point cloud, not yet the full FlyMeThrough-style model. The missing pieces for that paper-like result are:
+
+- stable camera trajectory/pose filtering across the whole flight
+- semantic segmentation or object masks, not just detector boxes
+- raycasting POIs into the reconstructed scene
+- a persistent map memory that merges repeated views instead of replacing the latest artifact
+- camera frustum and drone pose overlay in the 3D viewer
+
 ## Reconstruction Workspace
 
 Prepare a true reconstruction workspace from a video segment:

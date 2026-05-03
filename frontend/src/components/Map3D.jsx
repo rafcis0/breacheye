@@ -28,10 +28,16 @@ function cloudToGeometry(THREE, cloud) {
     positions[i * 3] = Number(point.x) || 0
     positions[i * 3 + 1] = Number(point.z) || 0
     positions[i * 3 + 2] = Number(point.y) || 0
-    const intensity = Math.max(0.15, Math.min(1, Number(point.intensity) || 0.5))
-    colors[i * 3] = 0.25 + intensity * 0.45
-    colors[i * 3 + 1] = 0.55 + intensity * 0.35
-    colors[i * 3 + 2] = 0.95
+    if (point.r !== undefined && point.g !== undefined && point.b !== undefined) {
+      colors[i * 3] = Math.max(0, Math.min(1, Number(point.r)))
+      colors[i * 3 + 1] = Math.max(0, Math.min(1, Number(point.g)))
+      colors[i * 3 + 2] = Math.max(0, Math.min(1, Number(point.b)))
+    } else {
+      const intensity = Math.max(0.15, Math.min(1, Number(point.intensity) || 0.5))
+      colors[i * 3] = 0.25 + intensity * 0.45
+      colors[i * 3 + 1] = 0.55 + intensity * 0.35
+      colors[i * 3 + 2] = 0.95
+    }
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))

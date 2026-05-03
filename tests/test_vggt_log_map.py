@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ai.vggt_log_map import select_frames, write_point_cloud_json
+from ai.vggt_log_map import _points_from_depth_with_colors, select_frames, write_point_cloud_json
 
 
 def test_select_frames_uses_stride_and_limit(tmp_path: Path) -> None:
@@ -35,3 +35,14 @@ def test_write_point_cloud_json_normalizes_points(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert '"source":"test"' in text
     assert '"points"' in text
+
+
+def test_points_from_depth_include_rgb() -> None:
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+    image[:, :, 0] = 255
+    depth = np.ones((4, 4), dtype=np.float32)
+
+    points = _points_from_depth_with_colors([image], [depth], point_step=2)
+
+    assert points.shape[1] == 6
+    assert np.all(points[:, 3] == 1.0)

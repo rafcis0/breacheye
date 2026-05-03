@@ -74,22 +74,26 @@ def run_vggt(frames: list[Path], vggt_root: Path, checkpoint: Path, point_step: 
     processor.load_model(checkpoint)
     images = [np.array(Image.open(path).convert("RGB")) for path in frames]
     result = processor.process_images(images)
-    if isinstance(result, dict) and result.get("point_cloud") is not None:
+    if isinstance(result, dict) and result.get("depth_maps") is not None:
+        points = _points_from_depth_with_colors(images, result["depth_maps"], point_step=point_step)
+    elif isinstance(result, dict) and result.get("point_cloud") is not None:
         points = np.asarray(result["point_cloud"], dtype=np.float32)
     elif isinstance(result, list):
-        points = _fallback_points_from_depth(images, result, point_step=point_step)
+        points = _points_from_depth_with_colors(images, result, point_step=point_step)
     else:
         raise RuntimeError("VGGT-MPS did not return point-cloud or depth outputs")
     if points.ndim != 2 or points.shape[1] < 3:
         raise RuntimeError(f"invalid point cloud shape from VGGT-MPS: {points.shape}")
-    return points[:, :3]
+    return points
 
 
-def _fallback_points_from_depth(images: list[np.ndarray], depth_maps: list[np.ndarray], point_step: int) -> np.ndarray:
+def _points_from_depth_with_colors(images: list[np.ndarray], depth_maps: list[np.ndarray], point_step: int) -> np.ndarray:
     all_points = []
     step = max(1, point_step)
     for index, (image, depth) in enumerate(zip(images, depth_maps, strict=False)):
         height, width = depth.shape
+        if image.shape[0] != height or image.shape[1] != width:
+            image = np.array(Image.fromarray(image).resize((width, height)))
         fx = fy = 500.0
         cx = width / 2.0
         cy = height / 2.0
@@ -97,13 +101,26 @@ def _fallback_points_from_depth(images: list[np.ndarray], depth_maps: list[np.nd
         z = depth[::step, ::step].astype(np.float32)
         x = ((xx.astype(np.float32) - cx) * z / fx) + index * 2.0
         y = (yy.astype(np.float32) - cy) * z / fy
-        all_points.append(np.stack([x.reshape(-1), y.reshape(-1), z.reshape(-1)], axis=1))
+        colors = image[::step, ::step, :3].astype(np.float32) / 255.0
+        all_points.append(
+            np.stack(
+                [
+                    x.reshape(-1),
+                    y.reshape(-1),
+                    z.reshape(-1),
+                    colors[:, :, 0].reshape(-1),
+                    colors[:, :, 1].reshape(-1),
+                    colors[:, :, 2].reshape(-1),
+                ],
+                axis=1,
+            )
+        )
     return np.concatenate(all_points, axis=0).astype(np.float32)
 
 
 def write_point_cloud_json(path: Path, points: np.ndarray, source: str) -> None:
     max_points = 12000
-    finite = np.isfinite(points).all(axis=1)
+    finite = np.isfinite(points[:, :3]).all(axis=1)
     sampled = points[finite]
     if sampled.shape[0] > max_points:
         indices = np.linspace(0, sampled.shape[0] - 1, max_points).astype(np.int64)
@@ -117,11 +134,25 @@ def write_point_cloud_json(path: Path, points: np.ndarray, source: str) -> None:
         "type": "point_cloud",
         "source": source,
         "points": [
-            {"x": float(x), "y": float(y), "z": float(z), "intensity": 0.8}
-            for x, y, z in normalized
+            _point_payload(normalized[index], sampled[index])
+            for index in range(normalized.shape[0])
         ],
     }
     path.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
+
+
+def _point_payload(position: np.ndarray, source_row: np.ndarray) -> dict:
+    payload = {
+        "x": float(position[0]),
+        "y": float(position[1]),
+        "z": float(position[2]),
+        "intensity": 0.8,
+    }
+    if source_row.shape[0] >= 6:
+        payload["r"] = float(np.clip(source_row[3], 0.0, 1.0))
+        payload["g"] = float(np.clip(source_row[4], 0.0, 1.0))
+        payload["b"] = float(np.clip(source_row[5], 0.0, 1.0))
+    return payload
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from breacheye.adapters.base import DroneAdapter, DroneState
 
@@ -16,6 +17,10 @@ class TelloAdapter(DroneAdapter):
     def __init__(self) -> None:
         self._tello = None
         self._connected = False
+        self._hover_left_right = _env_int("BREACHEYE_TELLO_HOVER_LEFT_RIGHT", 0)
+        self._hover_forward_back = _env_int("BREACHEYE_TELLO_HOVER_FORWARD_BACK", 0)
+        self._hover_up_down = _env_int("BREACHEYE_TELLO_HOVER_UP_DOWN", 0)
+        self._hover_yaw = _env_int("BREACHEYE_TELLO_HOVER_YAW", 0)
 
     async def connect(self) -> None:
         def _connect() -> None:
@@ -49,7 +54,12 @@ class TelloAdapter(DroneAdapter):
         await self._call("emergency")
 
     async def hover(self) -> None:
-        await self.rc_control(0, 0, 0, 0)
+        await self.rc_control(
+            self._hover_left_right,
+            self._hover_forward_back,
+            self._hover_up_down,
+            self._hover_yaw,
+        )
 
     async def rc_control(
         self,
@@ -112,3 +122,10 @@ def _int_or_none(value) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(-20, min(20, int(os.environ.get(name, default))))
+    except ValueError:
+        return default

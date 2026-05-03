@@ -90,6 +90,15 @@ breacheye fly --mode tello --rafa-mode models --fps 2 --run-id "$BREACHEYE_RUN_I
 
 Auto-takeoff climbs an extra 100 cm by default to reduce ground-effect drift. Use `--takeoff-climb-cm 0` to disable or `--takeoff-climb-cm 120` to tune it for the room.
 
+If the Tello consistently drifts backward/right while holding hover, apply a small hover trim before launching. Positive `forward_back` nudges forward; negative `left_right` nudges left:
+
+```bash
+export BREACHEYE_TELLO_HOVER_FORWARD_BACK=6
+export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
+```
+
+Trim values are clamped to `-20..20`. Start small.
+
 Simulator rehearsal:
 
 ```bash

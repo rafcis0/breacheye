@@ -12,7 +12,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Continuously build a lightweight 3D point-cloud artifact from Rafa depth logs.")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--log-dir", default="logs")
-    parser.add_argument("--interval-s", type=float, default=5.0)
+    parser.add_argument("--interval-s", type=float, default=1.0)
     parser.add_argument("--stride", type=int, default=18)
     parser.add_argument("--max-frames", type=int, default=24)
     args = parser.parse_args()

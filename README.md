@@ -166,6 +166,13 @@ breacheye fly --mode tello --rafa-mode models --fps 2 --auto-takeoff
 
 Auto-takeoff climbs an extra 100 cm by default to reduce ground-effect drift. Override with `--takeoff-climb-cm 120`, or disable with `--takeoff-climb-cm 0`.
 
+If hover consistently drifts backward/right, set small Tello hover trim before launch:
+
+```bash
+export BREACHEYE_TELLO_HOVER_FORWARD_BACK=6
+export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
+```
+
 The launcher writes a preflight snapshot, starts the safety harness, starts Rafa, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest`.
 
 ## Full-Flow Checklist
