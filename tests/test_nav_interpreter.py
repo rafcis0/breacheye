@@ -56,9 +56,9 @@ def test_map_forward(interp: NavInterpreter) -> None:
     assert cmd.payload.left_right == 0
     assert cmd.payload.up_down == 0
     assert cmd.payload.yaw == 0
-    # 50/30*1000 = 1667, clamped to 800
-    assert cmd.payload.duration_ms == 800
-    assert cmd.ttl_ms == 1000  # min(1200, 800+200)
+    # 50/30*1000 = 1667, clamped by the live movement safety cap.
+    assert cmd.payload.duration_ms == 350
+    assert cmd.ttl_ms == 550
 
 
 def test_all_actions_produce_valid_commands(interp: NavInterpreter) -> None:
@@ -96,7 +96,7 @@ def test_rotate_uses_degrees(interp: NavInterpreter) -> None:
 
 
 def test_duration_clamps(interp: NavInterpreter) -> None:
-    # Large distance → clamp to 800
+    # Large distance -> clamp to the live movement safety cap.
     decision_large = make_decision(
         "move_forward",
         params={"distance_cm": 500, "speed_cm_s": 10},
@@ -104,7 +104,7 @@ def test_duration_clamps(interp: NavInterpreter) -> None:
     )
     cmd_large = interp._map_action(decision_large)
     assert cmd_large.payload is not None
-    assert cmd_large.payload.duration_ms == 800
+    assert cmd_large.payload.duration_ms == 350
 
     # Tiny distance → clamp to 100
     decision_tiny = make_decision(
@@ -305,6 +305,64 @@ async def test_is_grounded_does_not_skip_when_flying() -> None:
     interp._client = Client()
 
     assert await interp._is_grounded() is False
+
+
+@pytest.mark.asyncio
+async def test_guard_hovers_during_initial_airborne_settle_window(monkeypatch) -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "telemetry": {
+                    "connected": True,
+                    "flying": True,
+                    "height_cm": 120,
+                    "raw": {"pitch": 0, "roll": 0, "tof": 140},
+                }
+            }
+
+    class Client:
+        async def get(self, url):
+            return Response()
+
+    times = iter([10.0])
+    monkeypatch.setattr("breacheye.nav_interpreter.monotonic", lambda: next(times))
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+
+    guarded = await interp._guard_command_for_health(1, make_decision("move_forward"))
+
+    assert guarded.type == CommandType.HOVER
+    assert guarded.issued_by == "nav_interpreter_settle_guard"
+
+
+@pytest.mark.asyncio
+async def test_guard_emergency_stops_on_severe_attitude() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "telemetry": {
+                    "connected": True,
+                    "flying": True,
+                    "height_cm": 0,
+                    "raw": {"pitch": 9, "roll": 104, "tof": 111},
+                }
+            }
+
+    class Client:
+        async def get(self, url):
+            return Response()
+
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+
+    guarded = await interp._guard_command_for_health(7, make_decision("hover"))
+
+    assert guarded.type == CommandType.EMERGENCY
+    assert guarded.issued_by == "nav_interpreter_attitude_guard"
 
 
 @pytest.mark.asyncio

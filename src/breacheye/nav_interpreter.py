@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from time import monotonic
 
 from breacheye.models import CommandType, DroneCommand, RCControlPayload
 from breacheye.rafa.codec import decode_navigation
@@ -9,6 +10,7 @@ from breacheye.rafa.schemas import NavigationDecision
 from breacheye.runlog import RunLogger
 
 logger = logging.getLogger("breacheye.nav_interpreter")
+_GUARD_SKIP = object()
 
 
 class NavInterpreter:
@@ -27,7 +29,12 @@ class NavInterpreter:
         self._poller = None
         self._consecutive_failures: int = 0
         self._forward_streak: int = 0
-        self._max_forward_streak: int = int(os.environ.get("BREACHEYE_NAV_MAX_FORWARD_STREAK", "3"))
+        self._max_forward_streak: int = _env_int("BREACHEYE_NAV_MAX_FORWARD_STREAK", 3, minimum=1, maximum=20)
+        self._max_move_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_MOVE_DURATION_MS", 350, minimum=50, maximum=1000)
+        self._max_yaw_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_YAW_DURATION_MS", 500, minimum=100, maximum=1000)
+        self._airborne_settle_s: float = _env_float("BREACHEYE_NAV_AIRBORNE_SETTLE_S", 3.0, minimum=0.0, maximum=15.0)
+        self._max_abs_attitude_deg: int = _env_int("BREACHEYE_NAV_MAX_ABS_ATTITUDE_DEG", 45, minimum=10, maximum=90)
+        self._first_airborne_at: float | None = None
         self._battery_threshold: int = 15
 
     def start(self) -> None:
@@ -129,16 +136,10 @@ class NavInterpreter:
 
         # Step 3: Map and execute
         try:
-            if await self._is_grounded():
-                self._forward_streak = 0
-                self.logger.event(
-                    "navigation_skipped_grounded",
-                    frame_id=nav.frame_id,
-                    action=nav.decision.action,
-                    confidence=nav.decision.confidence,
-                )
+            guarded_cmd = await self._guard_command_for_health(nav.frame_id, nav.decision)
+            if guarded_cmd is _GUARD_SKIP:
                 return False
-            cmd = self._map_action(nav.decision)
+            cmd = guarded_cmd if isinstance(guarded_cmd, DroneCommand) else self._map_action(nav.decision)
             await self._post_command(cmd)
             self._consecutive_failures = 0  # Reset on success
             self.logger.event(
@@ -178,9 +179,9 @@ class NavInterpreter:
 
         if action in ("rotate_left", "rotate_right"):
             degrees = decision.params.get("degrees", 30)
-            duration_ms = max(100, min(800, int(float(degrees) / 90 * 1000)))
+            duration_ms = max(100, min(self._max_yaw_duration_ms, int(float(degrees) / 90 * 1000)))
         else:
-            duration_ms = max(100, min(800, int(distance / max(speed, 1) * 1000)))
+            duration_ms = max(100, min(self._max_move_duration_ms, int(distance / max(speed, 1) * 1000)))
 
         ttl_ms = min(1200, duration_ms + 200)
 
@@ -224,6 +225,71 @@ class NavInterpreter:
         self._forward_streak = 0
         return decision.action
 
+    async def _guard_command_for_health(self, frame_id: int, decision: NavigationDecision):
+        health = await self._get_health_payload()
+        telemetry = health.get("telemetry", {}) if health else {}
+        if telemetry.get("connected") is True and telemetry.get("flying") is False:
+            self._forward_streak = 0
+            self._first_airborne_at = None
+            self.logger.event(
+                "navigation_skipped_grounded",
+                frame_id=frame_id,
+                action=decision.action,
+                confidence=decision.confidence,
+            )
+            return _GUARD_SKIP
+
+        if telemetry.get("flying") is not True:
+            return None
+
+        now = monotonic()
+        if self._first_airborne_at is None:
+            self._first_airborne_at = now
+
+        attitude_reasons = self._unsafe_attitude_reasons(telemetry)
+        if attitude_reasons:
+            self._forward_streak = 0
+            cmd = DroneCommand(type=CommandType.EMERGENCY, issued_by="nav_interpreter_attitude_guard")
+            self.logger.event(
+                "navigation_flight_state_guard",
+                frame_id=frame_id,
+                requested_action=decision.action,
+                substituted_command=cmd.type.value,
+                reason="; ".join(attitude_reasons),
+                telemetry=telemetry,
+            )
+            return cmd
+
+        if _is_movement_action(decision.action) and now - self._first_airborne_at < self._airborne_settle_s:
+            self._forward_streak = 0
+            cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter_settle_guard")
+            self.logger.event(
+                "navigation_flight_state_guard",
+                frame_id=frame_id,
+                requested_action=decision.action,
+                substituted_command=cmd.type.value,
+                reason=f"airborne settle window {now - self._first_airborne_at:.1f}s < {self._airborne_settle_s:.1f}s",
+                telemetry=telemetry,
+            )
+            return cmd
+
+        return None
+
+    def _unsafe_attitude_reasons(self, telemetry: dict) -> list[str]:
+        raw = telemetry.get("raw") or {}
+        reasons: list[str] = []
+        pitch = _float_or_none(raw.get("pitch"))
+        roll = _float_or_none(raw.get("roll"))
+        if pitch is not None and abs(pitch) >= self._max_abs_attitude_deg:
+            reasons.append(f"pitch={pitch:g}")
+        if roll is not None and abs(roll) >= self._max_abs_attitude_deg:
+            reasons.append(f"roll={roll:g}")
+        height_cm = _float_or_none(telemetry.get("height_cm"))
+        tof = _float_or_none(raw.get("tof"))
+        if height_cm is not None and height_cm <= 0 and tof is not None and tof <= 40:
+            reasons.append(f"height_cm={height_cm:g} tof={tof:g}")
+        return reasons
+
     async def _handle_failure(self) -> None:
         try:
             if self._consecutive_failures >= 3:
@@ -254,26 +320,28 @@ class NavInterpreter:
             self.logger.event("navigation_failure_handler_failed", failures=self._consecutive_failures)
 
     async def _get_battery(self) -> int | None:
-        try:
-            health_url = self.command_url.rsplit("/", 1)[0] + "/health"
-            resp = await self._client.get(health_url)
-            if resp.status_code == 200:
-                return resp.json().get("telemetry", {}).get("battery")
-        except Exception:
-            logger.warning("failed to fetch battery level")
+        payload = await self._get_health_payload()
+        if payload:
+            return payload.get("telemetry", {}).get("battery")
         return None
 
     async def _is_grounded(self) -> bool:
-        assert self._client is not None, "call start() before _is_grounded()"
+        payload = await self._get_health_payload()
+        if payload:
+            telemetry = payload.get("telemetry", {})
+            return telemetry.get("connected") is True and telemetry.get("flying") is False
+        return False
+
+    async def _get_health_payload(self) -> dict | None:
+        assert self._client is not None, "call start() before _get_health_payload()"
         try:
             health_url = self.command_url.rsplit("/", 1)[0] + "/health"
             resp = await self._client.get(health_url)
             if resp.status_code == 200:
-                telemetry = resp.json().get("telemetry", {})
-                return telemetry.get("connected") is True and telemetry.get("flying") is False
+                return resp.json()
         except Exception:
             logger.warning("failed to fetch flight state")
-        return False
+        return None
 
     async def _post_command(self, cmd: DroneCommand) -> None:
         assert self._client is not None, "call start() before _post_command()"
@@ -303,3 +371,41 @@ class NavInterpreter:
             reason = response_reason or response_status or "missing command response body"
             logger.warning("command failed cmd_id=%s status=%s reason=%s", cmd.command_id, response_status, reason)
             raise RuntimeError(f"command {cmd.command_id} failed: {reason}")
+
+
+def _is_movement_action(action: str) -> bool:
+    return action in {
+        "move_forward",
+        "move_back",
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down",
+        "rotate_left",
+        "rotate_right",
+    }
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _float_or_none(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
