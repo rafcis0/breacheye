@@ -136,6 +136,17 @@ class SafetyController:
             await asyncio.sleep(duration_ms / 1000)
             await self.adapter.hover()
             return
+        if command.type == CommandType.FLIP:
+            if not await self._is_flying():
+                raise RuntimeError("cannot flip while not flying")
+            state = await self.adapter.get_state()
+            if state.battery is not None and state.battery < 50:
+                raise RuntimeError(
+                    f"refusing flip: battery {state.battery}% is below 50% minimum"
+                )
+            assert command.payload is not None
+            await self.adapter.flip(command.payload.direction)
+            return
         raise ValueError(f"unsupported command type {command.type}")
 
     async def _is_flying(self) -> bool:

@@ -58,6 +58,10 @@ class DroneAdapter(ABC):
     async def get_state(self) -> DroneState:
         raise NotImplementedError
 
+    @abstractmethod
+    async def flip(self, direction: str) -> None:
+        raise NotImplementedError
+
     async def start_video(self) -> None:
         return None
 

@@ -69,6 +69,12 @@ class SimAdapter(DroneAdapter):
         self._require_connected()
         self.commands.append(("keepalive", ()))
 
+    async def flip(self, direction: str) -> None:
+        self._require_connected()
+        if not self.state.flying:
+            raise RuntimeError("cannot flip while not flying")
+        self.commands.append(("flip", (direction,)))
+
     async def get_state(self) -> DroneState:
         if self._flight_started_at is not None and self.state.flying:
             self.state.flight_time_s = int(monotonic() - self._flight_started_at)

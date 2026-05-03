@@ -111,6 +111,9 @@ class TelloAdapter(DroneAdapter):
 
         return await asyncio.to_thread(_state)
 
+    async def flip(self, direction: str) -> None:
+        await self._call(f"flip_{direction}")
+
     async def start_video(self) -> None:
         await self._call("streamon")
 
