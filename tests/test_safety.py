@@ -1,7 +1,9 @@
 import asyncio
+from time import monotonic
 
 import pytest
 
+from breacheye.adapters.base import DroneState
 from breacheye.adapters.sim import SimAdapter
 from breacheye.bus import AsyncEventBus
 from breacheye.models import CommandStatus, CommandType, DroneCommand, RCControlPayload
@@ -76,3 +78,45 @@ async def test_watchdog_hovers_after_stale_command() -> None:
         await controller.stop()
 
     assert ("hover", (0, 0, 0, 0)) in adapter.commands
+
+
+@pytest.mark.asyncio
+async def test_watchdog_does_not_interleave_with_active_command() -> None:
+    class SlowLandAdapter(SimAdapter):
+        async def land(self) -> None:
+            self.commands.append(("land_start", ()))
+            await asyncio.sleep(0.05)
+            await super().land()
+
+        async def get_state(self) -> DroneState:
+            state = await super().get_state()
+            return DroneState(
+                connected=state.connected,
+                flying=True,
+                battery=state.battery,
+                height_cm=state.height_cm,
+                flight_time_s=state.flight_time_s,
+                raw=state.raw,
+            )
+
+    adapter = SlowLandAdapter()
+    await adapter.connect()
+    await adapter.takeoff()
+    controller = SafetyController(
+        adapter,
+        AsyncEventBus(),
+        SafetyConfig(watchdog_interval_s=0.005, stale_command_s=0.0, keepalive_interval_s=0.0),
+    )
+    await controller.start()
+    try:
+        controller._last_command_at = monotonic() - 10
+        controller._last_keepalive_at = monotonic() - 10
+        result = await controller.execute(DroneCommand(type=CommandType.LAND, issued_by="test"))
+    finally:
+        await controller.stop()
+
+    assert result.status == CommandStatus.EXECUTED
+    land_start = [index for index, command in enumerate(adapter.commands) if command[0] == "land_start"][0]
+    land_done = [index for index, command in enumerate(adapter.commands) if command[0] == "land"][0]
+    between = adapter.commands[land_start + 1 : land_done]
+    assert all(command[0] not in {"hover", "keepalive"} for command in between)

@@ -136,13 +136,15 @@ class SafetyController:
                 await self.bus.publish("drone.telemetry", telemetry)
 
                 now = monotonic()
-                if telemetry.flying and now - self._last_command_at > self.config.stale_command_s:
-                    await self.adapter.hover()
-                    self._last_command_at = now
+                if not self._lock.locked():
+                    async with self._lock:
+                        if telemetry.flying and now - self._last_command_at > self.config.stale_command_s:
+                            await self.adapter.hover()
+                            self._last_command_at = monotonic()
 
-                if telemetry.connected and now - self._last_keepalive_at > self.config.keepalive_interval_s:
-                    await self.adapter.keepalive()
-                    self._last_keepalive_at = now
+                        if telemetry.connected and now - self._last_keepalive_at > self.config.keepalive_interval_s:
+                            await self.adapter.keepalive()
+                            self._last_keepalive_at = monotonic()
             except Exception as exc:
                 await self.bus.publish(
                     "drone.command_results",
