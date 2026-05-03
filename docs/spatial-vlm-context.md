@@ -51,6 +51,18 @@ Initial schema:
 
 The pipeline now logs `navigation_context_built` before every navigation decision. In the current implementation the context source is `stub_from_current_frame`: it summarizes current-frame detections, relative center-depth, and recent accepted actions. Pose is marked `unavailable` until VGGT-MPS or a later reconstruction backend is wired in.
 
+Current depth gating is relative, not metric. `nearest_obstacle_m` is the center-band median from the normalized Depth Anything output. The practical block threshold is `BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M` and defaults to `0.35`; increasing it makes the drone rotate sooner, decreasing it allows tighter forward views.
+
+Until real SLAM pose/frontiers exist, Rafa uses a lightweight node-search tactic:
+
+1. Treat the current hover position as a search node.
+2. Treat each yaw sample as a heading on that node.
+3. Mark the heading `blocked` when center depth is below the threshold or there is no forward frontier.
+4. If blocked, publish a short `rotate_right` and re-assess the next heading.
+5. If a forward action is allowed, start a fresh node after that movement.
+
+This is logged as `navigation_search_tactic` with `node_id`, `heading_index`, `heading_status`, `nearest_obstacle_m`, and the substituted action. It is intentionally conservative and should be replaced by VGGT-MPS pose/frontier updates once they are reliable.
+
 Every model-mode navigation decision should eventually log:
 
 ```text

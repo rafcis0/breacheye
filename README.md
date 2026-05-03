@@ -173,6 +173,16 @@ export BREACHEYE_TELLO_HOVER_FORWARD_BACK=6
 export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
 ```
 
+Navigation clearance is tunable. The current value is a normalized relative Depth Anything center-band depth, not true meters: lower values mean closer/blocked, higher values mean farther/clearer. Increase it to be more cautious; decrease it to allow tighter spaces.
+
+```bash
+export BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M=0.35
+export BREACHEYE_NAV_SEARCH_SCAN_DEGREES=20
+export BREACHEYE_NAV_MAX_HOVER_STREAK=4
+```
+
+When forward is blocked, Rafa marks the current search node heading as blocked, sends a short rotate, and re-assesses the next heading before any forward motion. This node-search tactic is logged as `navigation_search_tactic`; hard blocked-forward replacements are also logged as `navigation_safety_override`.
+
 The launcher writes a preflight snapshot, starts Rafa/background processes before auto-takeoff, defers Tello video until the aircraft is airborne, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest` and waits until frames are available.
 
 ## Full-Flow Checklist

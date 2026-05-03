@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from breacheye.rafa.schemas import (
     DepthOutput,
     DetectionOutput,
@@ -19,7 +21,9 @@ def build_spatial_context(
     detections: DetectionOutput,
     depth: DepthOutput | None,
     recent_actions: list[NavigationAction],
+    frontier_clearance: float | None = None,
 ) -> SpatialNavigationContext:
+    clearance = _resolve_frontier_clearance(frontier_clearance)
     nearest = _nearest_center_depth(depth)
     objects = [
         MapObject(
@@ -31,7 +35,7 @@ def build_spatial_context(
         for detection in detections.detections
     ]
     frontiers: list[MapFrontier] = []
-    if nearest is None or nearest > 0.35:
+    if nearest is None or nearest > clearance:
         frontiers.append(
             MapFrontier(
                 id=f"frontier-{meta.frame_id:06d}-forward",
@@ -99,3 +103,12 @@ def _bbox_relative_position(x1: int, x2: int, width: int | None) -> str:
     if center > (width * 2) / 3:
         return "right"
     return "center"
+
+
+def _resolve_frontier_clearance(value: float | None) -> float:
+    if value is None:
+        try:
+            value = float(os.environ.get("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.35))
+        except (TypeError, ValueError):
+            value = 0.35
+    return max(0.0, min(10.0, value))

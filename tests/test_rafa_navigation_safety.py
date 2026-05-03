@@ -37,6 +37,11 @@ def test_navigation_safety_override_blocks_forward_when_depth_is_close(tmp_path,
     assert override_events
     assert override_events[-1]["requested_action"] == "move_forward"
     assert override_events[-1]["substituted_action"] == "rotate_right"
+    search_events = [event for event in events if event["event"] == "navigation_search_tactic"]
+    assert search_events
+    assert search_events[-1]["reason"] == "scan_blocked_heading"
+    assert search_events[-1]["node_id"] == 0
+    assert search_events[-1]["heading_index"] == 0
 
 
 def test_navigation_safety_override_allows_forward_when_frontier_is_clear(tmp_path, monkeypatch) -> None:
@@ -60,3 +65,30 @@ def test_navigation_safety_override_allows_forward_when_frontier_is_clear(tmp_pa
     guarded = pipeline._apply_navigation_safety_override(output, context)
 
     assert guarded == output
+
+
+def test_navigation_node_search_rotates_on_blocked_hover(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", "0.35")
+    pipeline = RafaPipeline(RafaPipelineConfig(log_dir=str(tmp_path), run_id="safety"))
+    output = NavigationOutput(
+        frame_id=23,
+        decision=NavigationDecision(
+            action="hover",
+            params={"duration_ms": 500},
+            confidence=0.9,
+            reasoning="blocked by chair",
+        ),
+    )
+    context = SpatialNavigationContext(
+        frame_id=23,
+        looking_at=LookingAt(direction_label="forward", nearest_obstacle_m=0.2),
+        unexplored_frontiers=[],
+    )
+
+    guarded = pipeline._apply_navigation_safety_override(output, context)
+
+    assert guarded.decision.action == "rotate_right"
+    events = [json.loads(line) for line in (tmp_path / "safety-rafa.jsonl").read_text().splitlines()]
+    search_events = [event for event in events if event["event"] == "navigation_search_tactic"]
+    assert search_events[-1]["requested_action"] == "hover"
+    assert search_events[-1]["substituted_action"] == "rotate_right"

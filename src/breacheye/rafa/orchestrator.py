@@ -23,13 +23,13 @@ from breacheye.rafa.models import (
     SmolVLMNavigator,
 )
 from breacheye.rafa.receiver import ZmqFrameReceiver
+from breacheye.rafa.search_tactic import NodeSearchTactic
 from breacheye.rafa.schemas import (
     DepthOutput,
     DetectionOutput,
     HealthOutput,
     MemoryStatus,
     NavigationAction,
-    NavigationDecision,
     ModelStatus,
     NavigationOutput,
     SpatialNavigationContext,
@@ -65,6 +65,10 @@ class RafaPipeline:
         self._frames = {"detection": 0, "depth": 0, "decision": 0}
         self._recent_actions: list[NavigationAction] = []
         self._min_forward_clearance_m = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.35)
+        self._search_tactic = NodeSearchTactic(
+            clearance_threshold=self._min_forward_clearance_m,
+            scan_degrees=_env_int("BREACHEYE_NAV_SEARCH_SCAN_DEGREES", 20, minimum=5, maximum=90),
+        )
         self._started_at = monotonic()
         self._last_health_at = 0.0
         self.errors = list(self.config.errors)
@@ -313,6 +317,7 @@ class RafaPipeline:
             detections=detection,
             depth=depth,
             recent_actions=self._recent_actions,
+            frontier_clearance=self._min_forward_clearance_m,
         )
         self.logger.event(
             "navigation_context_built",
@@ -361,44 +366,25 @@ class RafaPipeline:
         context: SpatialNavigationContext,
     ) -> NavigationOutput:
         decision = output.decision
+        result = self._search_tactic.apply(output, context)
+        if result.event is not None:
+            self.logger.event("navigation_search_tactic", frame_id=output.frame_id, **result.event)
+        guarded = result.output
+        if guarded == output:
+            return output
         if decision.action != "move_forward":
-            return output
+            return guarded
 
-        nearest = context.looking_at.nearest_obstacle_m
-        blocked_by_depth = nearest is not None and nearest <= self._min_forward_clearance_m
-        no_forward_frontier = not context.unexplored_frontiers
-        if not blocked_by_depth and not no_forward_frontier:
-            return output
-
-        reasons: list[str] = []
-        if blocked_by_depth:
-            reasons.append(
-                f"nearest center depth {nearest:.2f} <= {self._min_forward_clearance_m:.2f}"
-            )
-        if no_forward_frontier:
-            reasons.append("no forward frontier in spatial context")
-        reason = "; ".join(reasons)
-        guarded = NavigationOutput(
-            frame_id=output.frame_id,
-            timestamp=output.timestamp,
-            decision=NavigationDecision(
-                action="rotate_right",
-                params={"degrees": 20},
-                confidence=min(decision.confidence, 0.7),
-                reasoning=f"Safety override: {reason}. Requested move_forward: {decision.reasoning}",
-                exploration_state="obstacle_avoidance",
-            ),
-        )
         self.logger.event(
             "navigation_safety_override",
             frame_id=output.frame_id,
             requested_action=decision.action,
             substituted_action=guarded.decision.action,
             requested_params=decision.params,
-            nearest_obstacle_m=nearest,
+            nearest_obstacle_m=context.looking_at.nearest_obstacle_m,
             min_forward_clearance_m=self._min_forward_clearance_m,
             frontier_count=len(context.unexplored_frontiers),
-            reason=reason,
+            reason=guarded.decision.reasoning,
         )
         return guarded
 
@@ -470,3 +456,11 @@ def _env_float(name: str, default: float) -> float:
     except (TypeError, ValueError):
         value = default
     return max(0.0, min(10.0, value))
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
