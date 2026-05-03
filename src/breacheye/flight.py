@@ -88,7 +88,6 @@ def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
                 config.log_dir,
                 *(_run_id_args(config.run_id)),
             ],
-            post_takeoff=True,
         ),
         ProcessSpec(
             "map_builder",
@@ -148,14 +147,12 @@ def run_flight(config: FlightLaunchConfig) -> int:
         if config.auto_takeoff:
             if config.mode == "tello":
                 _wait_for_takeoff_preflight(config.base_url, prefix="[flight]")
+                _start_harness_video(config.base_url, prefix="[flight]")
+                _wait_for_first_frame(config.base_url, prefix="[flight]")
             _post_takeoff(
                 config.base_url,
                 climb_cm=config.takeoff_climb_cm,
-                after_takeoff=(
-                    lambda: _start_harness_video(config.base_url, prefix="[flight]")
-                    if config.mode == "tello"
-                    else None
-                ),
+                after_takeoff=None,
             )
             _wait_for_accepts_nav(config.base_url, prefix="[flight]")
 
@@ -367,6 +364,23 @@ def _start_harness_video(base_url: str, *, prefix: str) -> None:
     response = httpx.post(f"{base_url}/video/start", timeout=10.0)
     response.raise_for_status()
     print(f"{prefix} video start response: {response.text}", flush=True)
+
+
+def _wait_for_first_frame(base_url: str, *, timeout_s: float = 15.0, prefix: str = "") -> None:
+    """Poll /frame/latest until we get a 200 response with content."""
+    import httpx
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(f"{base_url}/frame/latest", timeout=2.0)
+            if resp.status_code == 200 and len(resp.content) > 1000:
+                print(f"{prefix} first frame ready ({len(resp.content)} bytes)", flush=True)
+                return
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.3)
+    print(f"{prefix} WARNING: timed out waiting for first frame after {timeout_s}s", flush=True)
 
 
 def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
@@ -664,12 +678,10 @@ def build_demo_specs(
         ))
 
     # Nav interpreter in ALL modes — bridges ZMQ 5558 → harness /commands
-    # post_takeoff=True so run_demo starts it after takeoff completes
     specs.append(ProcessSpec(
         "nav_interpreter",
         [sys.executable, "-m", "breacheye.cli", "nav",
          "--command-url", f"{base_url}/commands", "--log-dir", log_dir, *_run_id_args(run_id)],
-        post_takeoff=True,
     ))
     if run_id:
         specs.append(ProcessSpec(
@@ -741,10 +753,12 @@ def run_demo(
 
         if resolved_mode == "live" and auto_takeoff:
             _wait_for_takeoff_preflight(base_url, prefix="[demo]")
+            _start_harness_video(base_url, prefix="[demo]")
+            _wait_for_first_frame(base_url, prefix="[demo]")
             _post_takeoff(
                 base_url,
                 climb_cm=takeoff_climb_cm,
-                after_takeoff=lambda: _start_harness_video(base_url, prefix="[demo]"),
+                after_takeoff=None,
             )
             _wait_for_accepts_nav(base_url, prefix="[demo]")
 

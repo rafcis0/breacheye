@@ -4,6 +4,7 @@ import argparse
 import asyncio
 
 import uvicorn
+from dotenv import load_dotenv
 
 from breacheye.models import CommandStatus, CommandType, DroneCommand, RCControlPayload
 from breacheye.planner import scripted_room_scan
@@ -11,6 +12,7 @@ from breacheye.service import HarnessRuntime, create_app
 
 
 def main() -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="breacheye")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
