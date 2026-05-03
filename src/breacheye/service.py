@@ -14,7 +14,9 @@ from breacheye.adapters.sim import SimAdapter
 from breacheye.adapters.tello import TelloAdapter
 from breacheye.bus import AsyncEventBus
 from breacheye.models import CommandResult, CommandStatus, DroneCommand
+from breacheye.operator import OperatorCommand, OperatorHandler
 from breacheye.safety import SafetyController
+from breacheye.state_machine import FlightStateMachine
 from breacheye.video import FrameStore, TelloVideoPump
 
 log = logging.getLogger(__name__)
@@ -31,6 +33,7 @@ class HarnessRuntime:
         self.frame_store = FrameStore(sample_fps=1.0)
         self.adapter = make_adapter(mode)
         self.safety = SafetyController(self.adapter, self.bus)
+        self.fsm = FlightStateMachine(self.adapter, self.bus)
         self.video_pump: TelloVideoPump | None = None
         self._zmq_task: asyncio.Task | None = None
         self._zmq_socket = None
@@ -182,6 +185,11 @@ def create_app(mode: str = "sim") -> FastAPI:
             await runtime.bus.publish("drone.command_results", result)
             return result
 
+    @app.post("/operator-command")
+    async def operator_command(command: OperatorCommand):
+        handler = OperatorHandler(runtime.fsm, runtime.bus)
+        return await handler.handle(command)
+
     @app.get("/frame/latest")
     async def latest_frame():
         frame = runtime.frame_store.latest_sampled_jpeg()
@@ -199,7 +207,16 @@ def create_app(mode: str = "sim") -> FastAPI:
     @app.websocket("/events")
     async def events(websocket: WebSocket):
         await websocket.accept()
-        topics = ["drone.telemetry", "drone.command_results", "drone.frames.llm", "drone.detections"]
+        topics = [
+            "drone.telemetry",
+            "drone.command_results",
+            "drone.frames.llm",
+            "drone.detections",
+            "drone.state_change",
+            "drone.paused",
+            "drone.resumed",
+            "drone.abort",
+        ]
         queues = {topic: await runtime.bus.subscribe(topic) for topic in topics}
         tasks: set[asyncio.Task] = set()
         try:
