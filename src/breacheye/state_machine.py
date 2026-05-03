@@ -94,8 +94,9 @@ class FlightStateMachine:
 
     async def abort(self) -> None:
         """Emergency abort — transition to LANDING from any non-terminal state."""
-        if self._state == FlightState.COMPLETE:
+        if self._state in (FlightState.COMPLETE, FlightState.PREFLIGHT):
             return
+        self._paused = False
         await self._bus.publish("drone.abort", {"from_state": str(self._state), "timestamp": time()})
         try:
             await self.transition(FlightState.LANDING)

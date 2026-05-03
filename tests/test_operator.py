@@ -93,6 +93,22 @@ async def test_abort_from_complete_is_noop() -> None:
     assert fsm.state == FlightState.COMPLETE
 
 
+async def test_abort_from_preflight_is_noop() -> None:
+    _, fsm, _, _ = await make_handler()
+    assert fsm.state == FlightState.PREFLIGHT
+    await fsm.abort()
+    assert fsm.state == FlightState.PREFLIGHT
+
+
+async def test_abort_clears_paused_flag() -> None:
+    _, fsm, _, _ = await make_handler()
+    await _to_exploring(fsm)
+    await fsm.pause()
+    assert fsm.paused is True
+    await fsm.abort()
+    assert fsm.paused is False
+
+
 # ---------------------------------------------------------------------------
 # event publication tests
 # ---------------------------------------------------------------------------
