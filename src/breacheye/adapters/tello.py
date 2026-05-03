@@ -100,12 +100,16 @@ class TelloAdapter(DroneAdapter):
 
         def _state() -> DroneState:
             raw = dict(self._tello.get_current_state() or {})
+            height_cm = _int_or_none(raw.get("h"))
+            flight_time_s = _int_or_none(raw.get("time"))
+            sdk_flying = bool(getattr(self._tello, "is_flying", False))
+            telemetry_airborne = (flight_time_s or 0) > 0 and height_cm is not None and height_cm >= 30
             return DroneState(
                 connected=self._connected,
-                flying=bool(getattr(self._tello, "is_flying", False)),
+                flying=sdk_flying or telemetry_airborne,
                 battery=_int_or_none(raw.get("bat")),
-                height_cm=_int_or_none(raw.get("h")),
-                flight_time_s=_int_or_none(raw.get("time")),
+                height_cm=height_cm,
+                flight_time_s=flight_time_s,
                 raw=raw,
             )
 

@@ -41,7 +41,8 @@ class NavInterpreter:
         self._max_hover_streak: int = _env_int("BREACHEYE_NAV_MAX_HOVER_STREAK", 4, minimum=1, maximum=30)
         self._enable_hover_scan: bool = _env_bool("BREACHEYE_NAV_ENABLE_HOVER_SCAN", False)
         self._max_move_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_MOVE_DURATION_MS", 350, minimum=50, maximum=1000)
-        self._max_yaw_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_YAW_DURATION_MS", 500, minimum=100, maximum=1000)
+        self._yaw_speed: int = _env_int("BREACHEYE_NAV_YAW_SPEED", 45, minimum=5, maximum=100)
+        self._max_yaw_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_YAW_DURATION_MS", 1000, minimum=100, maximum=1000)
         self._airborne_settle_s: float = _env_float("BREACHEYE_NAV_AIRBORNE_SETTLE_S", 3.0, minimum=0.0, maximum=15.0)
         self._max_abs_attitude_deg: int = _env_int("BREACHEYE_NAV_MAX_ABS_ATTITUDE_DEG", 45, minimum=10, maximum=90)
         self._drift_guard_enabled: bool = _env_bool("BREACHEYE_NAV_DRIFT_GUARD_ENABLED", True)
@@ -235,7 +236,7 @@ class NavInterpreter:
 
         if action in ("rotate_left", "rotate_right"):
             degrees = decision.params.get("degrees", 30)
-            duration_ms = max(100, min(self._max_yaw_duration_ms, int(float(degrees) / 90 * 1000)))
+            duration_ms = max(100, min(self._max_yaw_duration_ms, int(abs(float(degrees)) / self._yaw_speed * 1000)))
         else:
             duration_ms = max(100, min(self._max_move_duration_ms, int(distance / max(speed, 1) * 1000)))
 
@@ -248,8 +249,8 @@ class NavInterpreter:
             "move_right": {"left_right": speed},
             "move_up": {"up_down": speed},
             "move_down": {"up_down": -speed},
-            "rotate_left": {"yaw": -25},
-            "rotate_right": {"yaw": 25},
+            "rotate_left": {"yaw": -self._yaw_speed},
+            "rotate_right": {"yaw": self._yaw_speed},
         }
 
         axes = vel_map[action]

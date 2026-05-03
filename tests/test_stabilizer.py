@@ -94,6 +94,7 @@ async def test_stabilizer_log_mode_does_not_send_commands(tmp_path) -> None:
     await adapter.connect()
     await adapter.takeoff()
     safety = SafetyController(adapter, AsyncEventBus())
+    safety._last_command_at -= 10.0
     store = FrameStore(sample_fps=1000)
     previous, current = _shifted_frames()
     store.update_jpeg(previous, width=160, height=120)
@@ -159,6 +160,7 @@ async def test_stabilizer_safety_guard_lands_in_log_mode(tmp_path) -> None:
     await adapter.connect()
     await adapter.takeoff()
     safety = SafetyController(adapter, AsyncEventBus())
+    safety._last_command_at -= 10.0
     store = FrameStore(sample_fps=1000)
     previous, current = _shifted_frames()
     store.update_jpeg(previous, width=160, height=120)
@@ -185,11 +187,45 @@ async def test_stabilizer_safety_guard_lands_in_log_mode(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stabilizer_safety_guard_ignores_flow_during_recent_command(tmp_path) -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    await adapter.takeoff()
+    safety = SafetyController(adapter, AsyncEventBus())
+    await safety.execute(DroneCommand(type=CommandType.HOVER, issued_by="test"))
+    store = FrameStore(sample_fps=1000)
+    previous, current = _shifted_frames()
+    store.update_jpeg(previous, width=160, height=120)
+    stabilizer = FlightStabilizer(
+        safety,
+        store,
+        AsyncEventBus(),
+        config=StabilizerConfig(
+            mode="log",
+            min_features=4,
+            safety_flow_threshold_px=1.0,
+            safety_land_after=1,
+            idle_after_s=10.0,
+        ),
+        log_dir=str(tmp_path),
+        run_id="stab-recent-command",
+    )
+
+    await stabilizer._tick()
+    store.update_jpeg(current, width=160, height=120)
+    await stabilizer._tick()
+
+    assert ("land", ()) not in adapter.commands
+    assert stabilizer.status()["last_skip_reason"] == "safety_guard_command_channel_not_idle"
+
+
+@pytest.mark.asyncio
 async def test_stabilizer_safety_guard_catches_forward_back_drift(tmp_path) -> None:
     adapter = SimAdapter()
     await adapter.connect()
     await adapter.takeoff()
     safety = SafetyController(adapter, AsyncEventBus())
+    safety._last_command_at -= 10.0
     store = FrameStore(sample_fps=1000)
     previous, current = _scaled_frames(scale=0.9)
     store.update_jpeg(previous, width=160, height=120)

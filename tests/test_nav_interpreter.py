@@ -90,9 +90,8 @@ def test_rotate_uses_degrees(interp: NavInterpreter) -> None:
 
     assert cmd.type == CommandType.RC_CONTROL
     assert cmd.payload is not None
-    assert cmd.payload.yaw == 25
-    # 45/90*1000 = 500
-    assert cmd.payload.duration_ms == 500
+    assert cmd.payload.yaw == 45
+    assert cmd.payload.duration_ms == 1000
 
 
 def test_duration_clamps(interp: NavInterpreter) -> None:

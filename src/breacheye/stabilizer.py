@@ -250,6 +250,19 @@ class FlightStabilizer:
         if not reasons:
             self._safety_guard_streak = 0
             return False
+        if command_age_s < self.config.idle_after_s:
+            self._safety_guard_streak = 0
+            self._last_skip_reason = "safety_guard_command_channel_not_idle"
+            self._log(
+                "stabilizer_safety_guard_skipped",
+                reason="command_channel_not_idle",
+                command_age_s=command_age_s,
+                idle_after_s=self.config.idle_after_s,
+                reasons=reasons,
+                estimate=asdict(estimate),
+                telemetry=telemetry.model_dump(mode="json"),
+            )
+            return True
 
         self._safety_guard_streak += 1
         command_type = CommandType.LAND if self._safety_guard_streak >= self.config.safety_land_after else CommandType.HOVER

@@ -138,6 +138,17 @@ async def test_get_state_maps_sdk_fields(fake_tello) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_state_treats_height_telemetry_as_airborne_when_sdk_flag_lags(fake_tello) -> None:
+    adapter = TelloAdapter()
+    await adapter.connect()
+    fake_tello[0].is_flying = False
+
+    state = await adapter.get_state()
+
+    assert state.flying is True
+
+
+@pytest.mark.asyncio
 async def test_frame_reader_requires_connection_and_returns_sdk_reader(fake_tello) -> None:
     adapter = TelloAdapter()
     with pytest.raises(RuntimeError):
