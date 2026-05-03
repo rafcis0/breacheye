@@ -1,5 +1,5 @@
 import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
-import { formatFlightTime } from './TelemetryHUD'
+import { batteryColor, formatFlightTime } from '../lib/telemetry'
 
 function TelemetryChip({ label, value, valueStyle }) {
   return (
@@ -18,13 +18,6 @@ function TelemetryChip({ label, value, valueStyle }) {
       </span>
     </div>
   )
-}
-
-function batteryColor(battery) {
-  if (battery === null || battery === undefined) return undefined
-  if (battery > 50) return 'var(--color-status-normal)'
-  if (battery >= 20) return 'var(--color-status-caution)'
-  return 'var(--color-status-critical)'
 }
 
 function statusDotColor(connectionState) {

@@ -1,22 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
+import { batteryColor, formatFlightTime } from '../lib/telemetry'
 
 const HEALTH_URL = '/api/health'
 const POLL_INTERVAL_MS = 2000
-
-function batteryColor(battery) {
-  if (battery === null || battery === undefined) return '#6b7280'
-  if (battery > 50) return '#22c55e'
-  if (battery >= 20) return '#eab308'
-  return '#ef4444'
-}
-
-export function formatFlightTime(seconds) {
-  if (seconds === null || seconds === undefined) return '--:--'
-  const m = Math.floor(seconds / 60).toString().padStart(2, '0')
-  const s = (seconds % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
-}
 
 export default function TelemetryHUD() {
   const { data: wsData, connectionState } = useWebSocket('drone.telemetry')

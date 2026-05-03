@@ -48,44 +48,55 @@ export function WebSocketProvider({ children }) {
 
   useEffect(() => {
     function connect() {
-      const ws = new WebSocket(WS_URL)
-      wsRef.current = ws
-      setConnectionState(CONNECTION_STATE.RECONNECTING)
+      try {
+        const ws = new WebSocket(WS_URL)
+        wsRef.current = ws
 
-      ws.onopen = () => {
-        backoffRef.current = 1000
-        setConnectionState(CONNECTION_STATE.CONNECTED)
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const envelope = JSON.parse(event.data)
-          const { topic, message } = envelope
-          if (!topic) return
-
-          latestRef.current.set(topic, message)
-
-          const callbacks = listenersRef.current.get(topic)
-          if (callbacks) {
-            for (const cb of callbacks) {
-              cb(message)
-            }
-          }
-        } catch {
-          // Malformed frame — skip
+        ws.onopen = () => {
+          backoffRef.current = 1000
+          setConnectionState(CONNECTION_STATE.CONNECTED)
         }
-      }
 
-      ws.onclose = () => {
+        ws.onmessage = (event) => {
+          try {
+            const envelope = JSON.parse(event.data)
+            const { topic, message } = envelope
+            if (!topic) return
+
+            latestRef.current.set(topic, message)
+
+            const callbacks = listenersRef.current.get(topic)
+            if (callbacks) {
+              for (const cb of callbacks) {
+                cb(message)
+              }
+            }
+          } catch {
+            // Malformed frame — skip
+          }
+        }
+
+        ws.onclose = () => {
+          // Clear cached data so stale values aren't served after reconnect
+          latestRef.current = new Map()
+          setConnectionState(CONNECTION_STATE.RECONNECTING)
+          reconnectTimerRef.current = setTimeout(() => {
+            backoffRef.current = Math.min(backoffRef.current * 2, 30000)
+            connect()
+          }, backoffRef.current)
+        }
+
+        ws.onerror = () => {
+          // onclose fires after onerror; handled there
+        }
+      } catch (err) {
+        console.error('WebSocket connection failed:', err)
         setConnectionState(CONNECTION_STATE.RECONNECTING)
+        // Schedule retry with backoff
         reconnectTimerRef.current = setTimeout(() => {
           backoffRef.current = Math.min(backoffRef.current * 2, 30000)
           connect()
         }, backoffRef.current)
-      }
-
-      ws.onerror = () => {
-        // onclose fires after onerror; handled there
       }
     }
 

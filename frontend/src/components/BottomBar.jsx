@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
 
 function Separator() {
@@ -38,7 +37,6 @@ function wsHealthLabel(connectionState) {
 export default function BottomBar() {
   const { data: telemetry, connectionState } = useWebSocket('drone.telemetry')
   const { data: detectionsData } = useWebSocket('drone.detections')
-  const [view3D, setView3D] = useState(false)
 
   const connected = telemetry?.connected ?? false
   const flying = telemetry?.flying ?? false
@@ -101,16 +99,13 @@ export default function BottomBar() {
       {/* Right: 3D toggle placeholder */}
       <button
         type="button"
-        onClick={() => setView3D((v) => !v)}
-        className="flex items-center gap-1.5 px-2 py-0.5 rounded border transition-colors"
+        disabled
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded border opacity-50 cursor-not-allowed"
+        title="3D view coming soon"
         style={{
-          borderColor: view3D
-            ? 'var(--color-accent-blue)'
-            : 'var(--color-border-default)',
-          background: view3D ? 'rgba(86, 124, 219, 0.15)' : 'transparent',
-          color: view3D
-            ? 'var(--color-accent-blue)'
-            : 'var(--color-text-secondary)',
+          borderColor: 'var(--color-border-default)',
+          background: 'transparent',
+          color: 'var(--color-text-secondary)',
         }}
       >
         <span className="font-mono text-[11px] font-medium">[3D]</span>
