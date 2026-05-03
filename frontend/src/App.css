@@ -108,7 +108,8 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  text-transform: uppercase;
+  color: var(--color-accent-blue);
 }
 
 .video-panel__status {
@@ -254,10 +255,6 @@
 /* ── Telemetry HUD ───────────────────────────────────────── */
 
 .flight-controls {
-  /* Border/bg/blur handled by parent .glass-panel wrapper */
-  border: 1px solid rgba(248, 113, 113, 0.20);
-  border-radius: 0;
-  background: rgba(127, 29, 29, 0.12);
   overflow: hidden;
 }
 
@@ -266,23 +263,24 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(248, 113, 113, 0.18);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .flight-controls__title,
 .flight-controls__last {
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .flight-controls__title {
-  color: #fecaca;
+  color: var(--color-accent-blue);
 }
 
 .flight-controls__last {
-  color: #fca5a5;
+  color: var(--color-text-secondary);
 }
 
 .flight-controls__buttons {
@@ -293,13 +291,14 @@
 }
 
 .flight-controls__button {
-  height: 40px;
+  min-height: 44px;
   border: 1px solid transparent;
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: #fff;
   cursor: pointer;
 }
@@ -311,12 +310,18 @@
 
 .flight-controls__button--land {
   border-color: rgba(251, 191, 36, 0.5);
-  background: rgba(180, 83, 9, 0.82);
+  background: var(--color-accent-warning);
 }
 
 .flight-controls__button--emergency {
-  border-color: rgba(248, 113, 113, 0.75);
-  background: rgba(185, 28, 28, 0.9);
+  border-color: rgba(205, 66, 70, 0.75);
+  background: var(--color-accent-danger);
+  animation: emergency-pulse 2s ease-in-out infinite;
+}
+
+@keyframes emergency-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(205, 66, 70, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(205, 66, 70, 0.2); }
 }
 
 .telemetry-hud {
@@ -344,8 +349,9 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  color: #60a5fa;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent-blue);
 }
 
 .telemetry-hud__ws {
@@ -445,15 +451,15 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  color: #60a5fa;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent-blue);
 }
 
 .tactical-map__canvas {
   flex: 1;
   display: block;
   width: 100%;
-  cursor: crosshair;
 }
 
 .map3d {
@@ -478,8 +484,9 @@
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  color: #2dd4bf;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent-blue);
   white-space: nowrap;
 }
 
@@ -514,18 +521,38 @@
 /* ── Glassmorphism ───────────────────────────────────────── */
 
 .glass-panel {
-  background: rgb(15 23 42 / 0.95);
-  border-radius: 0.5rem;
+  background: rgba(17, 25, 40, 0.75);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+  border-radius: 8px;
 }
 
-@supports (backdrop-filter: blur(1px)) {
+@supports not (backdrop-filter: blur(12px)) {
   .glass-panel {
-    background: rgb(15 23 42 / 0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(15, 23, 42, 0.95);
   }
+}
+
+/* ── Panel header consistency ────────────────────────────── */
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.panel__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--color-accent-blue);
+  text-transform: uppercase;
 }
 
 .map3d__depth {

@@ -1,10 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useWebSocket } from '../contexts/WebSocketContext'
 
 const MJPEG_URL = '/api/video.mjpeg'
 
 export default function VideoPanel({ frameRef }) {
   const [hasSignal, setHasSignal] = useState(true)
   const retryRef = useRef(null)
+  const { data: detectionsData } = useWebSocket('drone.detections')
 
   const clearRetry = useCallback(() => {
     if (retryRef.current !== null) {
@@ -31,6 +33,10 @@ export default function VideoPanel({ frameRef }) {
     return () => clearRetry()
   }, [clearRetry])
 
+  const detectionCount = Array.isArray(detectionsData?.detections)
+    ? detectionsData.detections.length
+    : 0
+
   return (
     <div className="video-panel">
       <div className="video-panel__header">
@@ -41,6 +47,17 @@ export default function VideoPanel({ frameRef }) {
           />
           <span className="video-panel__status-text">
             {hasSignal ? 'SIGNAL ACTIVE' : 'NO SIGNAL'}
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              textTransform: 'uppercase',
+              color: detectionCount > 0 ? 'var(--color-text-secondary)' : 'var(--color-text-subtle)',
+              marginLeft: '8px',
+            }}
+          >
+            {detectionCount} DETECTIONS
           </span>
         </div>
       </div>
@@ -64,7 +81,7 @@ export default function VideoPanel({ frameRef }) {
             </div>
             <div className="video-panel__nosignal-label">NO SIGNAL</div>
             <div className="video-panel__nosignal-sub">
-              Waiting for drone feed on :8000
+              Check drone WiFi connection
             </div>
           </div>
         )}
@@ -72,7 +89,7 @@ export default function VideoPanel({ frameRef }) {
 
       <div className="video-panel__footer">
         <span className="video-panel__meta">DJI TELLO · 960×720 · 30 FPS</span>
-        <span className="video-panel__source">{MJPEG_URL}</span>
+        <span className="video-panel__source">960×720 · 30 FPS</span>
       </div>
     </div>
   )

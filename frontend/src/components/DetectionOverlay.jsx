@@ -94,9 +94,10 @@ export default function DetectionOverlay({ containerRef }) {
       ctx.lineWidth = 2
       ctx.strokeRect(x, y, w, h)
 
-      // Label: "{category_code} {label} {confidence}%"
+      // Primary label: "Threat 87%" (human label capitalized + confidence)
       const pct = Math.round(confidence * 100)
-      const labelText = `${category} ${label} ${pct}%`
+      const humanLabel = label.charAt(0).toUpperCase() + label.slice(1)
+      const labelText = `${humanLabel} ${pct}%`
       ctx.font = '11px monospace'
       ctx.textBaseline = 'bottom'
       const textMetrics = ctx.measureText(labelText)
@@ -116,26 +117,32 @@ export default function DetectionOverlay({ containerRef }) {
       ctx.fillStyle = color
       ctx.fillText(labelText, textX + 4, textY - 2)
 
+      // Secondary label: category code, smaller and dimmer
+      ctx.font = '9px monospace'
+      ctx.textBaseline = 'bottom'
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`
+      ctx.fillText(category, textX + textW + 3, textY - 2)
+
       // Threat badge — top-right corner of bbox
       const threatColor = THREAT_COLORS[threat_level] ?? DEFAULT_COLOR
       const [tr, tg, tb] = hexToRgb(threatColor)
       const badgeText = threat_level ?? 'INFO'
-      const badgeW = ctx.measureText(badgeText).width + 8
-      const badgeH = 14
+      ctx.font = 'bold 12px monospace'
+      const badgeW = ctx.measureText(badgeText).width + 10
+      const badgeH = 18
       const badgeX = x + w - badgeW
       const badgeY = y
 
-      ctx.fillStyle = `rgba(${tr}, ${tg}, ${tb}, 0.25)`
+      ctx.fillStyle = `rgba(${tr}, ${tg}, ${tb}, 0.55)`
       ctx.fillRect(badgeX, badgeY, badgeW, badgeH)
 
-      ctx.strokeStyle = `rgba(${tr}, ${tg}, ${tb}, 0.7)`
+      ctx.strokeStyle = `rgba(${tr}, ${tg}, ${tb}, 0.9)`
       ctx.lineWidth = 1
       ctx.strokeRect(badgeX, badgeY, badgeW, badgeH)
 
-      ctx.font = '9px monospace'
       ctx.textBaseline = 'top'
-      ctx.fillStyle = threatColor
-      ctx.fillText(badgeText, badgeX + 4, badgeY + 3)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(badgeText, badgeX + 5, badgeY + 3)
 
       ctx.restore()
     }
