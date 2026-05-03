@@ -193,3 +193,12 @@ class HealthOutput(StrictModel):
     memory: MemoryStatus = Field(default_factory=MemoryStatus)
     errors: list[str] = Field(default_factory=list)
     timestamp: float = Field(default_factory=time)
+
+
+class ObstacleAlert(StrictModel):
+    frame_id: int = Field(ge=0)
+    timestamp: float = Field(default_factory=time)
+    nearest_obstacle_m: float = Field(ge=0.0, le=1.0)
+    zones: dict[str, float]
+    blocked: bool
+    threshold: float = Field(ge=0.0, le=1.0)

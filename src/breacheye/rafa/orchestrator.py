@@ -56,8 +56,9 @@ class RafaPipelineConfig:
 
 
 class RafaPipeline:
-    def __init__(self, config: RafaPipelineConfig | None = None) -> None:
+    def __init__(self, config: RafaPipelineConfig | None = None, bus: object | None = None) -> None:
         self.config = config or RafaPipelineConfig()
+        self._bus = bus
         self._context = None
         self._receiver: ZmqFrameReceiver | None = None
         self._sockets: dict[str, object] = {}
@@ -248,6 +249,13 @@ class RafaPipeline:
         await self._publish("detections", detection)
         if depth is not None:
             await self._publish("depth", depth)
+            try:
+                from breacheye.rafa.spatial_context import compute_obstacle_alert
+                alert = compute_obstacle_alert(depth, frame_meta.frame_id, self._min_forward_clearance_m)
+                if self._bus is not None:
+                    await self._bus.publish("drone.obstacle_alert", alert.model_dump())
+            except Exception:
+                pass  # non-critical — don't break pipeline
         await self._publish("navigation", navigation)
         timings["publish_ms"] = _elapsed_ms(stage_started_at)
         self.logger.event(

@@ -11,6 +11,7 @@ from breacheye.rafa.schemas import (
     MapObject,
     MapPose,
     NavigationAction,
+    ObstacleAlert,
     SpatialNavigationContext,
 )
 
@@ -121,3 +122,39 @@ def _resolve_frontier_clearance(value: float | None) -> float:
         except (TypeError, ValueError):
             value = 0.45
     return max(0.0, min(10.0, value))
+
+
+def compute_obstacle_alert(
+    depth: DepthOutput,
+    frame_id: int,
+    threshold: float = 0.45,
+) -> ObstacleAlert:
+    """Compute per-zone proximity scores from depth output."""
+    import numpy as np
+
+    values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+    height, width = values.shape
+
+    # Split into left/center/right thirds (column-wise)
+    left_zone = values[:, : width // 3]
+    center_zone = values[:, width // 3 : (width * 2) // 3]
+    right_zone = values[:, (width * 2) // 3 :]
+
+    zones = {}
+    for name, zone in [("left", left_zone), ("center", center_zone), ("right", right_zone)]:
+        finite = zone[np.isfinite(zone)]
+        if finite.size:
+            zones[name] = float(np.nanpercentile(finite, 20))
+        else:
+            zones[name] = 1.0  # no data = assume clear
+
+    nearest = min(zones.values())
+    blocked = any(v < threshold for v in zones.values())
+
+    return ObstacleAlert(
+        frame_id=frame_id,
+        nearest_obstacle_m=nearest,
+        zones=zones,
+        blocked=blocked,
+        threshold=threshold,
+    )
