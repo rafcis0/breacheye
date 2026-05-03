@@ -22,13 +22,16 @@ def main() -> None:
     parser.add_argument("--mock-video", type=Path, help="Video file to loop over.")
     parser.add_argument("--video-start-s", type=float, default=0.0, help="Start reading mock video at this timestamp.")
     parser.add_argument("--video-stride", type=int, default=1, help="Read every Nth frame from mock video.")
+    parser.add_argument("--harness-url", help="Read JPEG frames from a running harness /frame/latest endpoint.")
     parser.add_argument("--tello", action="store_true", help="Read live frames from djitellopy.Tello.")
     parser.add_argument("--log-dir", default="logs")
     parser.add_argument("--run-id")
     args = parser.parse_args()
 
     publisher = FramePublisher(host=args.host, port=args.port, fps=args.fps, log_dir=args.log_dir, run_id=args.run_id)
-    if args.tello:
+    if args.harness_url:
+        frames = harness_frames(args.harness_url)
+    elif args.tello:
         frames = tello_frames()
     elif args.mock_video:
         frames = video_frames(args.mock_video, start_s=args.video_start_s, stride=args.video_stride)
@@ -152,6 +155,25 @@ def video_frames(path: Path, start_s: float = 0.0, stride: int = 1):
                 index += 1
         finally:
             capture.release()
+
+
+def harness_frames(frame_url: str, timeout_s: float = 2.0):
+    import cv2
+    import httpx
+    import numpy as np
+
+    with httpx.Client(timeout=timeout_s) as client:
+        while True:
+            response = client.get(frame_url)
+            if response.status_code == 404:
+                time.sleep(0.1)
+                continue
+            response.raise_for_status()
+            data = np.frombuffer(response.content, dtype=np.uint8)
+            frame = cv2.imdecode(data, cv2.IMREAD_COLOR)
+            if frame is None:
+                raise ValueError(f"harness returned undecodable JPEG from {frame_url}")
+            yield frame
 
 
 def tello_frames():

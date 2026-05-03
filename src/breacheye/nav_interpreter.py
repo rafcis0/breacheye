@@ -5,6 +5,7 @@ import logging
 from breacheye.models import CommandType, DroneCommand, RCControlPayload
 from breacheye.rafa.codec import decode_navigation
 from breacheye.rafa.schemas import NavigationDecision
+from breacheye.runlog import RunLogger
 
 logger = logging.getLogger("breacheye.nav_interpreter")
 
@@ -14,9 +15,12 @@ class NavInterpreter:
         self,
         endpoint: str = "tcp://127.0.0.1:5558",
         command_url: str = "http://localhost:8000/commands",
+        log_dir: str | None = "logs",
+        run_id: str | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.command_url = command_url
+        self.logger = RunLogger("nav_interpreter", log_dir=log_dir, run_id=run_id)
         self._socket = None
         self._client = None  # httpx.AsyncClient
         self._poller = None
@@ -39,6 +43,7 @@ class NavInterpreter:
 
         self._poller = zmq.asyncio.Poller()
         self._poller.register(self._socket, zmq.POLLIN)
+        self.logger.event("nav_interpreter_start", endpoint=self.endpoint, command_url=self.command_url)
 
     async def aclose(self) -> None:
         if self._socket is not None:
@@ -49,6 +54,7 @@ class NavInterpreter:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        self.logger.event("nav_interpreter_stop")
 
     async def run_forever(self) -> None:
         while True:
@@ -78,12 +84,26 @@ class NavInterpreter:
                 "malformed frame failures=%d raw=%.200s",
                 self._consecutive_failures, repr(data[:200]),
             )
+            self.logger.event(
+                "navigation_decode_failed",
+                failures=self._consecutive_failures,
+                raw=repr(data[:200]),
+            )
             await self._handle_failure()
             return False
 
         logger.info(
             "recv frame=%d action=%s confidence=%.2f",
             nav.frame_id, nav.decision.action, nav.decision.confidence,
+        )
+        self.logger.event(
+            "navigation_received",
+            frame_id=nav.frame_id,
+            action=nav.decision.action,
+            confidence=nav.decision.confidence,
+            reasoning=nav.decision.reasoning,
+            params=nav.decision.params,
+            exploration_state=nav.decision.exploration_state,
         )
 
         # Step 2: Confidence check
@@ -94,6 +114,13 @@ class NavInterpreter:
                 nav.frame_id, nav.decision.confidence,
                 nav.decision.reasoning, self._consecutive_failures,
             )
+            self.logger.event(
+                "navigation_low_confidence",
+                frame_id=nav.frame_id,
+                confidence=nav.decision.confidence,
+                failures=self._consecutive_failures,
+                reasoning=nav.decision.reasoning,
+            )
             await self._handle_failure()
             return False
 
@@ -102,10 +129,17 @@ class NavInterpreter:
             cmd = self._map_action(nav.decision)
             await self._post_command(cmd)
             self._consecutive_failures = 0  # Reset on success
+            self.logger.event(
+                "navigation_executed",
+                frame_id=nav.frame_id,
+                command_id=cmd.command_id,
+                command_type=cmd.type.value,
+            )
             return True
         except Exception:
             self._consecutive_failures += 1
             logger.exception("map_error failures=%d", self._consecutive_failures)
+            self.logger.event("navigation_map_failed", failures=self._consecutive_failures)
             await self._handle_failure()
             return False
 
@@ -179,9 +213,16 @@ class NavInterpreter:
                     cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter")
             else:
                 cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter")
+            self.logger.event(
+                "navigation_failure_action",
+                failures=self._consecutive_failures,
+                command_id=cmd.command_id,
+                command_type=cmd.type.value,
+            )
             await self._post_command(cmd)
         except Exception:
             logger.exception("handle_failure itself failed, failures=%d", self._consecutive_failures)
+            self.logger.event("navigation_failure_handler_failed", failures=self._consecutive_failures)
 
     async def _get_battery(self) -> int | None:
         try:
@@ -196,5 +237,11 @@ class NavInterpreter:
     async def _post_command(self, cmd: DroneCommand) -> None:
         assert self._client is not None, "call start() before _post_command()"
         resp = await self._client.post(self.command_url, json=cmd.model_dump(mode="json"))
+        self.logger.event(
+            "command_posted",
+            command_id=cmd.command_id,
+            command_type=cmd.type.value,
+            status_code=resp.status_code,
+        )
         if resp.status_code != 200:
             logger.warning("post failed status=%d", resp.status_code)

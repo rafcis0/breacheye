@@ -73,6 +73,27 @@ curl -X POST http://127.0.0.1:8000/commands \
   -d '{"type":"emergency","issued_by":"operator"}'
 ```
 
+## Full Loop Flight
+
+Use this after `breacheye smoke --mode tello` passes. The launcher keeps one Tello owner: the harness connects to the drone, and the frame publisher reads sampled JPEGs from the harness API.
+
+```bash
+export BREACHEYE_RUN_ID="tello-$(date -u +%Y%m%dT%H%M%SZ)"
+breacheye fly --mode tello --rafa-mode models --fps 5 --run-id "$BREACHEYE_RUN_ID"
+```
+
+Only add automatic takeoff for a clear test area with a human ready to intervene:
+
+```bash
+breacheye fly --mode tello --rafa-mode models --fps 5 --run-id "$BREACHEYE_RUN_ID" --auto-takeoff
+```
+
+Simulator rehearsal:
+
+```bash
+breacheye fly --mode sim --rafa-mode stub --duration-s 20
+```
+
 ## Troubleshooting
 
 - If commands work but telemetry/video do not, verify firewall access to UDP `8890` and `11111`.

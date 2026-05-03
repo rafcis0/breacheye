@@ -14,6 +14,7 @@ The repo is set up so Cooper and Rafa can work independently against frozen ZMQ 
 - Safe Tello harness: implemented in simulator mode and hardware-adapter mode.
 - Rafa pipeline: implemented as a separate ZMQ process with `stub`, `detector-only`, and `models` modes.
 - H+2 contract path: mock/live frame publisher can send JPEG msgpack frames on `5555`; Rafa publishes detections, depth, navigation, and health on `5556-5559`.
+- Flight launcher: `breacheye fly` starts the harness, Rafa, frame publisher, and nav bridge with one command.
 - Real model adapters: Qwen server navigation and Depth Anything V2 depth are wired for local weights. Model files stay ignored under `models/`.
 - Offline debug logs: every run writes JSONL events plus saved source frames; model depth outputs also save colorized PNGs for frame-by-frame inspection.
 
@@ -97,6 +98,12 @@ Live Tello:
 python integration/frame_publisher.py --tello --fps 30
 ```
 
+Preferred live Tello path, with the harness owning the drone connection:
+
+```bash
+python integration/frame_publisher.py --harness-url http://127.0.0.1:8000/frame/latest --fps 5
+```
+
 The publisher sends msgpack payloads on `5555`:
 
 ```json
@@ -126,6 +133,28 @@ breacheye serve --mode tello --host 127.0.0.1 --port 8000
 ```
 
 Connect the Mac to the `Tello-XXXXXX` Wi-Fi network first. Use a second network interface for internet/Palantir access.
+
+## One-Command Flight Loop
+
+Run the full loop in simulator mode first:
+
+```bash
+breacheye fly --mode sim --rafa-mode stub --duration-s 20
+```
+
+When connected to Tello Wi-Fi, use the harness-owned frame source:
+
+```bash
+breacheye fly --mode tello --rafa-mode models --fps 5
+```
+
+Add `--auto-takeoff` only when the area is clear, prop guards are on, and a human is ready to land or emergency-stop:
+
+```bash
+breacheye fly --mode tello --rafa-mode models --fps 5 --auto-takeoff
+```
+
+The launcher writes a preflight snapshot, starts the safety harness, starts Rafa, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest`.
 
 ## API
 
