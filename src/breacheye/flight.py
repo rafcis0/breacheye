@@ -33,6 +33,7 @@ class FlightLaunchConfig:
 class ProcessSpec:
     name: str
     argv: list[str]
+    post_takeoff: bool = False
 
 
 def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
@@ -87,6 +88,7 @@ def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
                 config.log_dir,
                 *(_run_id_args(config.run_id)),
             ],
+            post_takeoff=True,
         ),
         ProcessSpec(
             "map_builder",
@@ -97,6 +99,7 @@ def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
                 config.log_dir,
                 *(_run_id_args(config.run_id)),
             ],
+            post_takeoff=True,
         ),
     ]
     if config.mode == "tello" and config.auto_takeoff:
@@ -128,8 +131,10 @@ def run_flight(config: FlightLaunchConfig) -> int:
 
     procs: list[tuple[str, subprocess.Popen]] = []
     specs = build_process_specs(config)
+    pre_specs = [s for s in specs if not s.post_takeoff]
+    post_specs = [s for s in specs if s.post_takeoff]
     try:
-        for spec in specs:
+        for spec in pre_specs:
             print(f"[flight] starting {spec.name}: {' '.join(spec.argv)}", flush=True)
             procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy(), start_new_session=True)))
             if spec.name == "harness":
@@ -151,6 +156,10 @@ def run_flight(config: FlightLaunchConfig) -> int:
                     else None
                 ),
             )
+
+        for spec in post_specs:
+            print(f"[flight] starting {spec.name}: {' '.join(spec.argv)}", flush=True)
+            procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy(), start_new_session=True)))
 
         deadline = time.monotonic() + config.duration_s if config.duration_s else None
         while True:
@@ -631,16 +640,19 @@ def build_demo_specs(
         ))
 
     # Nav interpreter in ALL modes — bridges ZMQ 5558 → harness /commands
+    # post_takeoff=True so run_demo starts it after takeoff completes
     specs.append(ProcessSpec(
         "nav_interpreter",
         [sys.executable, "-m", "breacheye.cli", "nav",
          "--command-url", f"{base_url}/commands", "--log-dir", log_dir, *_run_id_args(run_id)],
+        post_takeoff=True,
     ))
     if run_id:
         specs.append(ProcessSpec(
             "map_builder",
             [sys.executable, str(root / "integration" / "map_builder.py"),
              "--log-dir", log_dir, *_run_id_args(run_id)],
+            post_takeoff=True,
         ))
     if mode == "live" and defer_video:
         specs.append(harness)
@@ -687,10 +699,12 @@ def run_demo(
         run_id,
         defer_video=defer_video,
     )
+    pre_specs = [s for s in specs if not s.post_takeoff]
+    post_specs = [s for s in specs if s.post_takeoff]
     procs: list[tuple[str, subprocess.Popen]] = []
 
     try:
-        for spec in specs:
+        for spec in pre_specs:
             print(f"[demo] starting {spec.name}", flush=True)
             procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy(), start_new_session=True)))
             if spec.name == "harness":
@@ -707,6 +721,10 @@ def run_demo(
                 climb_cm=takeoff_climb_cm,
                 after_takeoff=lambda: _start_harness_video(base_url, prefix="[demo]"),
             )
+
+        for spec in post_specs:
+            print(f"[demo] starting {spec.name}", flush=True)
+            procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy(), start_new_session=True)))
 
         print("\n[demo] all components running — Ctrl+C to stop\n", flush=True)
 

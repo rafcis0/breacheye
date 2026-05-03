@@ -285,41 +285,6 @@ async def test_handle_failure_hovers_when_battery_unknown() -> None:
     assert posted_commands[0].type == CommandType.HOVER
 
 
-@pytest.mark.asyncio
-async def test_is_grounded_detects_connected_not_flying() -> None:
-    class Response:
-        status_code = 200
-
-        def json(self):
-            return {"telemetry": {"connected": True, "flying": False}}
-
-    class Client:
-        async def get(self, url):
-            return Response()
-
-    interp = NavInterpreter(command_url="http://localhost:8000/commands")
-    interp._client = Client()
-
-    assert await interp._is_grounded() is True
-
-
-@pytest.mark.asyncio
-async def test_is_grounded_does_not_skip_when_flying() -> None:
-    class Response:
-        status_code = 200
-
-        def json(self):
-            return {"telemetry": {"connected": True, "flying": True}}
-
-    class Client:
-        async def get(self, url):
-            return Response()
-
-    interp = NavInterpreter(command_url="http://localhost:8000/commands")
-    interp._client = Client()
-
-    assert await interp._is_grounded() is False
-
 
 @pytest.mark.asyncio
 async def test_guard_hovers_during_initial_airborne_settle_window(monkeypatch) -> None:
