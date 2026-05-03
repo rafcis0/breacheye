@@ -112,6 +112,7 @@ class HarnessRuntime:
 
     async def _zmq_reader(self) -> None:
         assert self._zmq_socket is not None
+
         backoff = 1.0
         max_backoff = 30.0
         while True:
@@ -119,11 +120,10 @@ class HarnessRuntime:
                 while True:
                     raw = await self._zmq_socket.recv()
                     try:
-                        payload = json.loads(raw)
-                    except json.JSONDecodeError as exc:
-                        log.debug("ZMQ: bad JSON from detections channel: %s", exc)
+                        await _publish_zmq_bridge_payload(self.bus, raw)
+                    except ValueError as exc:
+                        log.debug("ZMQ: unsupported payload on detections bridge: %s", exc)
                         continue
-                    await self.bus.publish("drone.detections", payload)
                     backoff = 1.0
             except asyncio.CancelledError:
                 return
@@ -170,6 +170,14 @@ class HarnessRuntime:
         await self.safety.stop()
         await self.adapter.close()
 
+    async def sync_fsm_after_command(self, command: DroneCommand, result: CommandResult) -> None:
+        if result.status != CommandStatus.EXECUTED:
+            return
+        if command.type == CommandType.TAKEOFF:
+            await self.fsm.mark_airborne_for_nav()
+        elif command.type in (CommandType.LAND, CommandType.EMERGENCY):
+            await self.fsm.mark_grounded()
+
 
 def make_adapter(mode: str) -> DroneAdapter:
     if mode in {"sim", "dry_run"}:
@@ -177,6 +185,22 @@ def make_adapter(mode: str) -> DroneAdapter:
     if mode == "tello":
         return TelloAdapter()
     raise ValueError(f"unsupported mode {mode!r}")
+
+
+async def _publish_zmq_bridge_payload(bus: AsyncEventBus, raw: bytes) -> None:
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        from breacheye.rafa.codec import decode_msgpack
+
+        payload = decode_msgpack(raw)
+        if "obstacle_detected" in payload or "nearest_obstacle_m" in payload:
+            await bus.publish("drone.obstacle_alert", payload)
+            return
+        raise ValueError(f"ignored non-detection msgpack payload keys={sorted(payload.keys())}")
+    if not isinstance(payload, dict):
+        raise ValueError("JSON payload must decode to a mapping")
+    await bus.publish("drone.detections", payload)
 
 
 def create_app(
@@ -258,7 +282,9 @@ def create_app(
     @app.post("/commands")
     async def command(command: DroneCommand):
         try:
-            return await runtime.safety.execute(command)
+            result = await runtime.safety.execute(command)
+            await runtime.sync_fsm_after_command(command, result)
+            return result
         except ValueError as exc:
             result = CommandResult(
                 command_id=command.command_id,

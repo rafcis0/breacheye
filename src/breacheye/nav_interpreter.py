@@ -39,6 +39,7 @@ class NavInterpreter:
         self._hover_streak: int = 0
         self._max_forward_streak: int = _env_int("BREACHEYE_NAV_MAX_FORWARD_STREAK", 3, minimum=1, maximum=20)
         self._max_hover_streak: int = _env_int("BREACHEYE_NAV_MAX_HOVER_STREAK", 4, minimum=1, maximum=30)
+        self._enable_hover_scan: bool = _env_bool("BREACHEYE_NAV_ENABLE_HOVER_SCAN", False)
         self._max_move_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_MOVE_DURATION_MS", 350, minimum=50, maximum=1000)
         self._max_yaw_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_YAW_DURATION_MS", 500, minimum=100, maximum=1000)
         self._airborne_settle_s: float = _env_float("BREACHEYE_NAV_AIRBORNE_SETTLE_S", 3.0, minimum=0.0, maximum=15.0)
@@ -296,7 +297,7 @@ class NavInterpreter:
         if decision.action == "hover":
             self._forward_streak = 0
             self._hover_streak += 1
-            if self._hover_streak > self._max_hover_streak:
+            if self._enable_hover_scan and self._hover_streak > self._max_hover_streak:
                 self.logger.event(
                     "navigation_hover_scan_guard",
                     requested_action=decision.action,
@@ -496,6 +497,13 @@ def _truthy(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return False
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:

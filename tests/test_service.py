@@ -2,7 +2,10 @@ import time
 
 from fastapi.testclient import TestClient
 
+from breacheye.bus import AsyncEventBus
+from breacheye.rafa.codec import encode_json, encode_msgpack
 from breacheye.service import create_app
+from breacheye.service import _publish_zmq_bridge_payload
 
 
 def test_health_endpoint_in_sim_mode() -> None:
@@ -34,18 +37,22 @@ def test_video_start_stop_endpoint_in_sim_mode() -> None:
 def test_command_endpoint_executes_takeoff_in_sim_mode() -> None:
     with TestClient(create_app(mode="sim")) as client:
         response = client.post("/commands", json={"type": "takeoff", "issued_by": "test"})
+        health = client.get("/health")
 
     assert response.status_code == 200
     assert response.json()["status"] == "executed"
+    assert health.json()["accepts_nav"] is True
 
 
 def test_command_endpoint_executes_land_in_sim_mode() -> None:
     with TestClient(create_app(mode="sim")) as client:
         client.post("/commands", json={"type": "takeoff", "issued_by": "test"})
         response = client.post("/commands", json={"type": "land", "issued_by": "test"})
+        health = client.get("/health")
 
     assert response.status_code == 200
     assert response.json()["status"] == "executed"
+    assert health.json()["accepts_nav"] is False
 
 
 def test_navigation_event_updates_room_graph() -> None:
@@ -123,3 +130,24 @@ def test_latest_depth_map_returns_run_artifact(monkeypatch, tmp_path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
     assert response.content == png_bytes
+
+
+async def test_zmq_bridge_routes_json_detection_payload() -> None:
+    bus = AsyncEventBus()
+    queue = await bus.subscribe("drone.detections")
+
+    await _publish_zmq_bridge_payload(bus, encode_json({"frame_id": 1, "detections": []}))
+
+    assert (await queue.get()) == {"frame_id": 1, "detections": []}
+
+
+async def test_zmq_bridge_routes_msgpack_obstacle_alert() -> None:
+    bus = AsyncEventBus()
+    queue = await bus.subscribe("drone.obstacle_alert")
+
+    await _publish_zmq_bridge_payload(
+        bus,
+        encode_msgpack({"frame_id": 2, "obstacle_detected": True, "min_depth": 0.1}),
+    )
+
+    assert (await queue.get())["obstacle_detected"] is True

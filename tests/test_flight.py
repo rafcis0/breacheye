@@ -9,6 +9,7 @@ from breacheye.flight import (
     _shutdown_emergency_reasons,
     _post_takeoff,
     _rafa_log_has_navigation,
+    _wait_for_accepts_nav,
     _wait_for_rafa_navigation,
     build_process_specs,
 )
@@ -106,7 +107,7 @@ def test_shutdown_land_posts_hover_then_land(monkeypatch) -> None:
     assert calls == [
         ("get", "http://harness/health", 1.5),
         ("post", "http://harness/commands", "hover", 8.0),
-        ("post", "http://harness/commands", "land", 8.0),
+        ("post", "http://harness/commands", "land", 15.0),
     ]
 
 
@@ -152,7 +153,7 @@ def test_shutdown_land_escalates_to_emergency_when_land_fails_and_drone_is_stuck
     assert calls == [
         ("get", "http://harness/health", 1.5),
         ("post", "http://harness/commands", "hover", 8.0),
-        ("post", "http://harness/commands", "land", 8.0),
+        ("post", "http://harness/commands", "land", 15.0),
         ("get", "http://harness/health", 1.5),
         ("post", "http://harness/commands", "emergency", 5.0),
     ]
@@ -303,3 +304,54 @@ def test_wait_for_rafa_navigation_refuses_timeout(tmp_path, monkeypatch) -> None
 
     with pytest.raises(RuntimeError, match="refusing auto-takeoff"):
         _wait_for_rafa_navigation(str(tmp_path), "missing", "[test]", timeout_s=1.0)
+
+
+def test_wait_for_accepts_nav_requires_enabled_health(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, accepts_nav: bool) -> None:
+            self._accepts_nav = accepts_nav
+
+        def json(self):
+            return {
+                "accepts_nav": self._accepts_nav,
+                "telemetry": {"connected": True, "flying": True, "battery": 80},
+            }
+
+    def fake_get(url, timeout):
+        calls.append((url, timeout))
+        return FakeResponse(accepts_nav=len(calls) > 1)
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    _wait_for_accepts_nav("http://harness", prefix="[test]", timeout_s=2.0)
+
+    assert len(calls) == 2
+
+
+def test_wait_for_accepts_nav_times_out_when_state_machine_stays_closed(monkeypatch) -> None:
+    current = {"value": 0.0}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "accepts_nav": False,
+                "telemetry": {"connected": True, "flying": True, "battery": 80},
+            }
+
+    def fake_monotonic():
+        current["value"] += 1.0
+        return current["value"]
+
+    monkeypatch.setattr("httpx.get", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr("time.monotonic", fake_monotonic)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="autonomous nav did not become enabled"):
+        _wait_for_accepts_nav("http://harness", prefix="[test]", timeout_s=1.0)

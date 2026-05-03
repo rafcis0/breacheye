@@ -44,6 +44,16 @@ class NodeSearchTactic:
             self._advance_node()
             return SearchTacticResult(output=output, event=event)
 
+        if blocked and decision.action == "hover":
+            event = self._event(
+                "hold_blocked_heading",
+                decision,
+                context,
+                blocked=blocked,
+                substituted_action=decision.action,
+            )
+            return SearchTacticResult(output=output, event=event)
+
         if blocked and decision.action not in {"land", "rotate_left", "rotate_right"}:
             guarded = NavigationOutput(
                 frame_id=output.frame_id,

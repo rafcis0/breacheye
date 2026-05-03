@@ -123,6 +123,36 @@ class FlightStateMachine:
             },
         )
 
+    async def mark_airborne_for_nav(self) -> None:
+        """Record an externally executed takeoff and enable autonomous nav."""
+        if self._state == FlightState.PREFLIGHT:
+            await self._set_state_without_entry(FlightState.TAKEOFF)
+        if self._state == FlightState.TAKEOFF:
+            await self._set_state_without_entry(FlightState.EXPLORING)
+
+    async def mark_grounded(self) -> None:
+        """Record an externally executed land/emergency and disable nav."""
+        self._paused = False
+        if self._state in (FlightState.COMPLETE, FlightState.PREFLIGHT):
+            return
+        if self._state != FlightState.LANDING:
+            await self._set_state_without_entry(FlightState.LANDING)
+        await self._set_state_without_entry(FlightState.COMPLETE)
+
+    async def _set_state_without_entry(self, target: FlightState) -> None:
+        if target == self._state:
+            return
+        from_state = self._state
+        self._state = target
+        await self._bus.publish(
+            "drone.state_change",
+            {
+                "from_state": str(from_state),
+                "to_state": str(target),
+                "timestamp": time(),
+            },
+        )
+
     async def _run_guard(self, target: FlightState) -> None:
         if target == FlightState.TAKEOFF:
             checks = await self.preflight_check()

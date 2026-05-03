@@ -185,6 +185,7 @@ def test_forward_streak_resets_on_non_forward(interp: NavInterpreter) -> None:
 
 
 def test_hover_streak_guard_forces_scan_after_repeated_hover(interp: NavInterpreter) -> None:
+    interp._enable_hover_scan = True
     interp._max_hover_streak = 2
 
     first = interp._map_action(make_decision("hover"))
@@ -196,6 +197,16 @@ def test_hover_streak_guard_forces_scan_after_repeated_hover(interp: NavInterpre
     assert third.type == CommandType.RC_CONTROL
     assert third.payload is not None
     assert third.payload.yaw > 0
+
+
+def test_hover_streak_guard_disabled_by_default(interp: NavInterpreter) -> None:
+    interp._max_hover_streak = 1
+
+    first = interp._map_action(make_decision("hover"))
+    second = interp._map_action(make_decision("hover"))
+
+    assert first.type == CommandType.HOVER
+    assert second.type == CommandType.HOVER
 
 
 @pytest.mark.asyncio

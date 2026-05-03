@@ -156,6 +156,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
                     else None
                 ),
             )
+            _wait_for_accepts_nav(config.base_url, prefix="[flight]")
 
         for spec in post_specs:
             print(f"[flight] starting {spec.name}: {' '.join(spec.argv)}", flush=True)
@@ -451,7 +452,7 @@ def _post_shutdown_land(base_url: str) -> None:
             response = httpx.post(
                 f"{base_url}/commands",
                 json={"type": command_type, "issued_by": "flight_launcher_shutdown"},
-                timeout=8.0,
+                timeout=15.0 if command_type == "land" else 8.0,
             )
             print(f"[flight] shutdown {command_type} response: {response.text}", flush=True)
             if command_type == "land":
@@ -460,11 +461,18 @@ def _post_shutdown_land(base_url: str) -> None:
                     land_failed = payload.get("status") != "executed"
                 except Exception:
                     land_failed = True
+        except KeyboardInterrupt:
+            print(f"[flight] shutdown interrupted during {command_type}; continuing cleanup", flush=True)
+            if command_type == "land":
+                land_failed = True
         except Exception as exc:
             print(f"[flight] shutdown {command_type} failed: {exc}", flush=True)
             if command_type == "land":
                 land_failed = True
-        time.sleep(0.25)
+        try:
+            time.sleep(0.25)
+        except KeyboardInterrupt:
+            print("[flight] shutdown interrupted between commands; continuing cleanup", flush=True)
 
     if land_failed:
         _post_shutdown_emergency_if_stuck(base_url)
@@ -549,6 +557,8 @@ def _post_shutdown_stop_video(base_url: str) -> None:
     try:
         response = httpx.post(f"{base_url}/video/stop", timeout=5.0)
         print(f"[flight] shutdown video stop response: {response.text}", flush=True)
+    except KeyboardInterrupt:
+        print("[flight] shutdown video stop interrupted; continuing cleanup", flush=True)
     except Exception as exc:
         print(f"[flight] shutdown video stop failed: {exc}", flush=True)
 
@@ -558,8 +568,16 @@ def _stop_flight_processes(procs: Sequence[tuple[str, subprocess.Popen]], base_u
     harness = [(name, proc) for name, proc in procs if name == "harness"]
     _stop_processes(non_harness)
     if harness and harness[0][1].poll() is None:
-        _post_shutdown_land(base_url)
-        _post_shutdown_stop_video(base_url)
+        try:
+            _post_shutdown_land(base_url)
+        except KeyboardInterrupt:
+            print("[flight] shutdown landing interrupted; forcing process cleanup", flush=True)
+        except Exception as exc:
+            print(f"[flight] shutdown landing failed unexpectedly: {exc}", flush=True)
+        try:
+            _post_shutdown_stop_video(base_url)
+        except KeyboardInterrupt:
+            print("[flight] shutdown video cleanup interrupted; forcing process cleanup", flush=True)
     _stop_processes(harness)
 
 
@@ -721,6 +739,7 @@ def run_demo(
                 climb_cm=takeoff_climb_cm,
                 after_takeoff=lambda: _start_harness_video(base_url, prefix="[demo]"),
             )
+            _wait_for_accepts_nav(base_url, prefix="[demo]")
 
         for spec in post_specs:
             print(f"[demo] starting {spec.name}", flush=True)
@@ -780,6 +799,26 @@ def _rafa_log_has_navigation(path: Path) -> bool:
     except OSError:
         return False
     return False
+
+
+def _wait_for_accepts_nav(base_url: str, *, prefix: str, timeout_s: float = 5.0) -> None:
+    import httpx
+
+    deadline = time.monotonic() + timeout_s
+    last_summary: str | None = None
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.get(f"{base_url}/health", timeout=1.0)
+            if response.status_code == 200:
+                payload = response.json()
+                last_summary = _health_summary_from_telemetry(payload.get("telemetry", {}))
+                if payload.get("accepts_nav") is True:
+                    print(f"{prefix} nav accepted: {last_summary}", flush=True)
+                    return
+        except Exception:
+            pass
+        time.sleep(0.25)
+    raise RuntimeError(f"autonomous nav did not become enabled after takeoff ({last_summary})")
 
 
 def _check_tello_connection(timeout: float = 5.0) -> bool:
