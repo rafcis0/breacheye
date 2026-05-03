@@ -14,6 +14,7 @@ from fastapi.responses import Response, StreamingResponse
 from breacheye.adapters.base import DroneAdapter
 from breacheye.adapters.sim import SimAdapter
 from breacheye.adapters.tello import TelloAdapter
+from breacheye.battery_monitor import BatteryMonitor
 from breacheye.bus import AsyncEventBus
 from breacheye.models import CommandResult, CommandStatus, CommandType, DroneCommand
 from breacheye.operator import OperatorCommand, OperatorHandler
@@ -36,8 +37,9 @@ class HarnessRuntime:
         self.bus = AsyncEventBus()
         self.frame_store = FrameStore(sample_fps=1.0)
         self.adapter = make_adapter(mode)
-        self.safety = SafetyController(self.adapter, self.bus)
         self.fsm = FlightStateMachine(self.adapter, self.bus)
+        self.safety = SafetyController(self.adapter, self.bus)
+        self.battery_monitor = BatteryMonitor(self.fsm, self.adapter, self.bus)
         self.video_pump: TelloVideoPump | None = None
         self._zmq_task: asyncio.Task | None = None
         self._zmq_socket = None
@@ -46,6 +48,7 @@ class HarnessRuntime:
     async def start(self) -> None:
         await self.adapter.connect()
         await self.safety.start()
+        await self.battery_monitor.start()
         if self.mode == "tello" and self.start_video_on_start:
             await self.start_video()
         self._start_zmq_bridge()
@@ -137,6 +140,7 @@ class HarnessRuntime:
             self._zmq_task = None
         self._cleanup_zmq()
         await self.stop_video()
+        await self.battery_monitor.stop()
         await self.safety.stop()
         await self.adapter.close()
 
@@ -185,6 +189,7 @@ def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastA
         return {
             "mode": runtime.mode,
             "telemetry": telemetry.model_dump(),
+            "accepts_nav": runtime.fsm.accepts_nav(),
             "video": {
                 "running": runtime.video_pump is not None,
                 "full_frame_ready": runtime.frame_store.latest_full_jpeg() is not None,
