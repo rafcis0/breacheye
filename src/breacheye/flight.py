@@ -114,6 +114,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
     )
     os.environ["BREACHEYE_RUN_ID"] = run_id
     os.environ["BREACHEYE_LOG_DIR"] = config.log_dir
+    _apply_local_model_defaults(os.environ, config.rafa_mode)
     write_preflight(log_dir=config.log_dir, run_id=run_id)
 
     procs: list[tuple[str, subprocess.Popen]] = []
@@ -172,6 +173,37 @@ def _run_id_args(run_id: str | None) -> list[str]:
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _apply_local_model_defaults(env: dict[str, str], rafa_mode: str) -> None:
+    if rafa_mode != "models":
+        return
+    root = _repo_root()
+    defaults = {
+        "BREACHEYE_QWEN_MODEL": root / "models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf",
+        "BREACHEYE_QWEN_MMPROJ": root / "models/qwen3-vl-2b/mmproj-F16.gguf",
+        "BREACHEYE_DEPTH_ANYTHING_PATH": root / "models/depth-anything-v2-small-hf",
+        "BREACHEYE_SMOLVLM_PATH": root / "models/smolvlm2-500m",
+    }
+    for key, path in defaults.items():
+        if key not in env and path.exists():
+            env[key] = str(path)
+    if "BREACHEYE_DEPTH_ANYTHING_DEVICE" not in env:
+        env["BREACHEYE_DEPTH_ANYTHING_DEVICE"] = "mps"
+    if "BREACHEYE_QWEN_SERVER_URL" not in env and _qwen_server_available():
+        env["BREACHEYE_QWEN_SERVER_URL"] = "http://127.0.0.1:56262"
+    if "BREACHEYE_QWEN_MAX_TOKENS" not in env:
+        env["BREACHEYE_QWEN_MAX_TOKENS"] = "32"
+
+
+def _qwen_server_available(url: str = "http://127.0.0.1:56262") -> bool:
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(url.rstrip("/") + "/health", timeout=0.25):
+            return True
+    except Exception:
+        return False
 
 
 def _wait_for_harness(base_url: str, timeout_s: float = 20.0) -> None:

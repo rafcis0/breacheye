@@ -135,9 +135,9 @@ class RafaPipeline:
                     "model_fallback",
                     model="qwen3_vl",
                     error=f"{exc}; {fallback_exc}",
-                    fallback="safe-rule-navigator",
+                    fallback="hover-navigator",
                 )
-                self.navigator = SafeRuleNavigator()
+                self.navigator = HoverNavigator()
                 self.model_status["qwen3_vl"] = ModelStatus(
                     status="fallback",
                     active=self.navigator.name,

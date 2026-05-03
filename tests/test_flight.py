@@ -1,4 +1,4 @@
-from breacheye.flight import FlightLaunchConfig, build_process_specs
+from breacheye.flight import FlightLaunchConfig, _apply_local_model_defaults, build_process_specs
 
 
 def test_tello_flight_defaults_to_harness_frame_source() -> None:
@@ -20,3 +20,26 @@ def test_sim_flight_defaults_to_synthetic_frames() -> None:
 
     assert "--harness-url" not in publisher
     assert "--tello" not in publisher
+
+
+def test_model_flight_applies_local_model_defaults(monkeypatch, tmp_path) -> None:
+    model = tmp_path / "models/qwen3-vl-2b/Qwen3-VL-2B-Instruct-Q4_K_M.gguf"
+    mmproj = tmp_path / "models/qwen3-vl-2b/mmproj-F16.gguf"
+    depth = tmp_path / "models/depth-anything-v2-small-hf"
+    smol = tmp_path / "models/smolvlm2-500m"
+    for path in [model, mmproj]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"model")
+    depth.mkdir(parents=True)
+    smol.mkdir(parents=True)
+
+    monkeypatch.setattr("breacheye.flight._repo_root", lambda: tmp_path)
+    monkeypatch.setattr("breacheye.flight._qwen_server_available", lambda: True)
+    env: dict[str, str] = {}
+
+    _apply_local_model_defaults(env, "models")
+
+    assert env["BREACHEYE_QWEN_MODEL"] == str(model)
+    assert env["BREACHEYE_QWEN_MMPROJ"] == str(mmproj)
+    assert env["BREACHEYE_DEPTH_ANYTHING_PATH"] == str(depth)
+    assert env["BREACHEYE_QWEN_SERVER_URL"] == "http://127.0.0.1:56262"

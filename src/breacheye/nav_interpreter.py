@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from breacheye.models import CommandType, DroneCommand, RCControlPayload
 from breacheye.rafa.codec import decode_navigation
@@ -25,6 +26,8 @@ class NavInterpreter:
         self._client = None  # httpx.AsyncClient
         self._poller = None
         self._consecutive_failures: int = 0
+        self._forward_streak: int = 0
+        self._max_forward_streak: int = int(os.environ.get("BREACHEYE_NAV_MAX_FORWARD_STREAK", "3"))
         self._battery_threshold: int = 15
 
     def start(self) -> None:
@@ -144,7 +147,7 @@ class NavInterpreter:
             return False
 
     def _map_action(self, decision: NavigationDecision) -> DroneCommand:
-        action = decision.action
+        action = self._guard_action(decision)
 
         if action == "hover":
             cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter")
@@ -194,6 +197,23 @@ class NavInterpreter:
         )
         logger.info("send type=%s cmd_id=%s", cmd.type, cmd.command_id)
         return cmd
+
+    def _guard_action(self, decision: NavigationDecision) -> str:
+        if decision.action == "move_forward":
+            self._forward_streak += 1
+            if self._forward_streak > self._max_forward_streak:
+                self.logger.event(
+                    "navigation_forward_streak_guard",
+                    requested_action=decision.action,
+                    substituted_action="rotate_right",
+                    forward_streak=self._forward_streak,
+                    max_forward_streak=self._max_forward_streak,
+                )
+                self._forward_streak = 0
+                return "rotate_right"
+            return "move_forward"
+        self._forward_streak = 0
+        return decision.action
 
     async def _handle_failure(self) -> None:
         try:
