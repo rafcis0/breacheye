@@ -2,8 +2,8 @@ import { useRef } from 'react'
 import VideoPanel from './components/VideoPanel'
 import DetectionOverlay from './components/DetectionOverlay'
 import FlightControls from './components/FlightControls'
-import PlaceholderCard from './components/PlaceholderCard'
 import TelemetryHUD from './components/TelemetryHUD'
+import TacticalMap from './components/TacticalMap'
 import './App.css'
 
 export default function App() {
@@ -32,7 +32,7 @@ export default function App() {
         <aside className="app__sidebar">
           <FlightControls />
           <TelemetryHUD />
-          <PlaceholderCard label="TACTICAL MAP" ticket="25" />
+          <TacticalMap />
         </aside>
       </main>
     </div>
