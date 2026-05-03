@@ -281,6 +281,7 @@ def create_app(
 
     @app.post("/commands")
     async def command(command: DroneCommand):
+        log.info("cmd_received id=%s type=%s issued_by=%s", command.command_id, command.type, command.issued_by)
         try:
             result = await runtime.safety.execute(command)
             await runtime.sync_fsm_after_command(command, result)
