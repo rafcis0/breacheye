@@ -6,6 +6,7 @@ from breacheye.flight import (
     _post_command_checked,
     _post_shutdown_land,
     _post_shutdown_stop_video,
+    _shutdown_emergency_reasons,
     _post_takeoff,
     _rafa_log_has_navigation,
     _wait_for_rafa_navigation,
@@ -107,6 +108,72 @@ def test_shutdown_land_posts_hover_then_land(monkeypatch) -> None:
         ("post", "http://harness/commands", "hover", 8.0),
         ("post", "http://harness/commands", "land", 8.0),
     ]
+
+
+def test_shutdown_land_escalates_to_emergency_when_land_fails_and_drone_is_stuck(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload=None) -> None:
+            self._payload = payload or {}
+            self.text = str(self._payload)
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, timeout):
+        calls.append(("get", url, timeout))
+        return FakeResponse(
+            {
+                "telemetry": {
+                    "flying": True,
+                    "height_cm": -20,
+                    "raw": {"pitch": -46, "roll": -33, "tof": 31},
+                },
+                "video": {"running": True, "latest_sample": {"timestamp": 100.0}},
+            }
+        )
+
+    def fake_post(url, json, timeout):
+        calls.append(("post", url, json["type"], timeout))
+        if json["type"] == "land":
+            return FakeResponse({"status": "failed", "reason": "timeout"})
+        return FakeResponse({"status": "executed"})
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("time.time", lambda: 120.0)
+
+    _post_shutdown_land("http://harness")
+
+    assert calls == [
+        ("get", "http://harness/health", 1.5),
+        ("post", "http://harness/commands", "hover", 8.0),
+        ("post", "http://harness/commands", "land", 8.0),
+        ("get", "http://harness/health", 1.5),
+        ("post", "http://harness/commands", "emergency", 5.0),
+    ]
+
+
+def test_shutdown_emergency_reasons_include_attitude_ground_and_stale_video() -> None:
+    reasons = _shutdown_emergency_reasons(
+        {
+            "telemetry": {
+                "flying": True,
+                "height_cm": -20,
+                "raw": {"pitch": -46, "roll": -33, "tof": 31},
+            },
+            "video": {"running": True, "latest_sample": {"timestamp": 100.0}},
+        },
+        now=120.0,
+    )
+
+    assert "pitch=-46" in reasons
+    assert "height_cm=-20 tof=31" in reasons
+    assert "stale_video_sample=20.0s" in reasons
 
 
 def test_shutdown_stop_video_posts_video_stop(monkeypatch) -> None:

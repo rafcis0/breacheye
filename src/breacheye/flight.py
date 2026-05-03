@@ -422,6 +422,7 @@ def _post_shutdown_land(base_url: str) -> None:
     except Exception as exc:
         print(f"[flight] could not read health before landing: {exc}", flush=True)
 
+    land_failed = False
     for command_type in ("hover", "land"):
         try:
             response = httpx.post(
@@ -430,9 +431,93 @@ def _post_shutdown_land(base_url: str) -> None:
                 timeout=8.0,
             )
             print(f"[flight] shutdown {command_type} response: {response.text}", flush=True)
+            if command_type == "land":
+                try:
+                    payload = response.json()
+                    land_failed = payload.get("status") != "executed"
+                except Exception:
+                    land_failed = True
         except Exception as exc:
             print(f"[flight] shutdown {command_type} failed: {exc}", flush=True)
+            if command_type == "land":
+                land_failed = True
         time.sleep(0.25)
+
+    if land_failed:
+        _post_shutdown_emergency_if_stuck(base_url)
+
+
+def _post_shutdown_emergency_if_stuck(base_url: str) -> None:
+    import httpx
+
+    try:
+        health = httpx.get(f"{base_url}/health", timeout=1.5)
+        health_payload = health.json() if health.status_code == 200 else {}
+    except Exception as exc:
+        print(f"[flight] could not read health before emergency fallback: {exc}", flush=True)
+        return
+
+    telemetry = health_payload.get("telemetry", {})
+    if telemetry.get("flying") is not True:
+        print("[flight] land failed, but drone no longer reports flying; skipping emergency", flush=True)
+        return
+
+    reasons = _shutdown_emergency_reasons(health_payload)
+    if not reasons:
+        print("[flight] land failed, but telemetry does not look stuck; skipping emergency", flush=True)
+        return
+
+    try:
+        response = httpx.post(
+            f"{base_url}/commands",
+            json={"type": "emergency", "issued_by": "flight_launcher_shutdown"},
+            timeout=5.0,
+        )
+        print(
+            f"[flight] shutdown emergency response: {response.text} "
+            f"(reasons: {', '.join(reasons)})",
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"[flight] shutdown emergency failed: {exc} (reasons: {', '.join(reasons)})", flush=True)
+
+
+def _shutdown_emergency_reasons(health_payload: dict, *, now: float | None = None) -> list[str]:
+    now = time.time() if now is None else now
+    telemetry = health_payload.get("telemetry", {})
+    raw = telemetry.get("raw") or {}
+    video = health_payload.get("video") or {}
+    reasons: list[str] = []
+
+    pitch = _float_or_none(raw.get("pitch"))
+    roll = _float_or_none(raw.get("roll"))
+    if pitch is not None and abs(pitch) >= 35:
+        reasons.append(f"pitch={pitch:g}")
+    if roll is not None and abs(roll) >= 35:
+        reasons.append(f"roll={roll:g}")
+
+    height_cm = _float_or_none(telemetry.get("height_cm"))
+    tof = _float_or_none(raw.get("tof"))
+    if height_cm is not None and height_cm <= 0 and tof is not None and tof <= 40:
+        reasons.append(f"height_cm={height_cm:g} tof={tof:g}")
+
+    latest_sample = video.get("latest_sample") or {}
+    latest_ts = _float_or_none(latest_sample.get("timestamp"))
+    if latest_ts is not None and now - latest_ts >= 8.0:
+        reasons.append(f"stale_video_sample={now - latest_ts:.1f}s")
+    elif video.get("running") is True and latest_sample == {}:
+        reasons.append("video_running_without_sample")
+
+    return reasons
+
+
+def _float_or_none(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _post_shutdown_stop_video(base_url: str) -> None:

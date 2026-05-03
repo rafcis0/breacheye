@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from time import monotonic, time
 
@@ -28,8 +29,10 @@ from breacheye.rafa.schemas import (
     HealthOutput,
     MemoryStatus,
     NavigationAction,
+    NavigationDecision,
     ModelStatus,
     NavigationOutput,
+    SpatialNavigationContext,
     Throughput,
 )
 from breacheye.rafa.spatial_context import build_spatial_context, summarize_spatial_context
@@ -61,6 +64,7 @@ class RafaPipeline:
         self._running = False
         self._frames = {"detection": 0, "depth": 0, "decision": 0}
         self._recent_actions: list[NavigationAction] = []
+        self._min_forward_clearance_m = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.35)
         self._started_at = monotonic()
         self._last_health_at = 0.0
         self.errors = list(self.config.errors)
@@ -319,6 +323,7 @@ class RafaPipeline:
         try:
             output = await self.navigator.decide(frame, frame_meta, detection, depth)
             validated = NavigationOutput.model_validate(output.model_dump())
+            validated = self._apply_navigation_safety_override(validated, context)
             self._frames["decision"] += 1
             self._recent_actions.append(validated.decision.action)
             self.logger.event(
@@ -335,6 +340,7 @@ class RafaPipeline:
             self.errors.append(f"navigation fallback on frame {frame_meta.frame_id}: {exc}")
             self.logger.event("navigation_fallback", frame_id=frame_meta.frame_id, error=str(exc))
             fallback = await SafeRuleNavigator().decide(frame, frame_meta, detection, depth)
+            fallback = self._apply_navigation_safety_override(fallback, context)
             self._frames["decision"] += 1
             self._recent_actions.append(fallback.decision.action)
             self.logger.event(
@@ -348,6 +354,53 @@ class RafaPipeline:
                 fallback=True,
             )
             return fallback
+
+    def _apply_navigation_safety_override(
+        self,
+        output: NavigationOutput,
+        context: SpatialNavigationContext,
+    ) -> NavigationOutput:
+        decision = output.decision
+        if decision.action != "move_forward":
+            return output
+
+        nearest = context.looking_at.nearest_obstacle_m
+        blocked_by_depth = nearest is not None and nearest <= self._min_forward_clearance_m
+        no_forward_frontier = not context.unexplored_frontiers
+        if not blocked_by_depth and not no_forward_frontier:
+            return output
+
+        reasons: list[str] = []
+        if blocked_by_depth:
+            reasons.append(
+                f"nearest center depth {nearest:.2f} <= {self._min_forward_clearance_m:.2f}"
+            )
+        if no_forward_frontier:
+            reasons.append("no forward frontier in spatial context")
+        reason = "; ".join(reasons)
+        guarded = NavigationOutput(
+            frame_id=output.frame_id,
+            timestamp=output.timestamp,
+            decision=NavigationDecision(
+                action="hover",
+                params={"duration_ms": 500},
+                confidence=min(decision.confidence, 0.7),
+                reasoning=f"Safety override: {reason}. Requested move_forward: {decision.reasoning}",
+                exploration_state="obstacle_avoidance",
+            ),
+        )
+        self.logger.event(
+            "navigation_safety_override",
+            frame_id=output.frame_id,
+            requested_action=decision.action,
+            substituted_action=guarded.decision.action,
+            requested_params=decision.params,
+            nearest_obstacle_m=nearest,
+            min_forward_clearance_m=self._min_forward_clearance_m,
+            frontier_count=len(context.unexplored_frontiers),
+            reason=reason,
+        )
+        return guarded
 
     async def _maybe_publish_health(self) -> None:
         if monotonic() - self._last_health_at >= self.config.health_interval_s:
@@ -409,3 +462,11 @@ class RafaPipeline:
 
 def _elapsed_ms(started_at: float) -> int:
     return int((monotonic() - started_at) * 1000)
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(0.0, min(10.0, value))
