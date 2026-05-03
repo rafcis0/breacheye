@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
-const WS_URL = 'ws://localhost:8000/events'
-const HEALTH_URL = 'http://localhost:8000/health'
+const WS_URL = `ws://${window.location.host}/api/events`
+const HEALTH_URL = '/api/health'
 const POLL_INTERVAL_MS = 2000
 const RECONNECT_DELAY_MS = 1000
 
