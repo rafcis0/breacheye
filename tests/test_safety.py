@@ -62,6 +62,36 @@ async def test_rc_control_rejects_duration_longer_than_ttl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hover_noops_when_grounded() -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    controller = SafetyController(adapter, AsyncEventBus())
+
+    result = await controller.execute(DroneCommand(type=CommandType.HOVER, issued_by="test"))
+
+    assert result.status == CommandStatus.EXECUTED
+    assert ("hover", (0, 0, 0, 0)) not in adapter.commands
+
+
+@pytest.mark.asyncio
+async def test_rc_control_rejects_when_grounded() -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    controller = SafetyController(adapter, AsyncEventBus())
+
+    result = await controller.execute(
+        DroneCommand(
+            type=CommandType.RC_CONTROL,
+            issued_by="test",
+            payload=RCControlPayload(duration_ms=100),
+        )
+    )
+
+    assert result.status == CommandStatus.FAILED
+    assert "not flying" in (result.reason or "")
+
+
+@pytest.mark.asyncio
 async def test_watchdog_hovers_after_stale_command() -> None:
     adapter = SimAdapter()
     await adapter.connect()

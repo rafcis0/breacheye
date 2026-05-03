@@ -129,6 +129,15 @@ class NavInterpreter:
 
         # Step 3: Map and execute
         try:
+            if await self._is_grounded():
+                self._forward_streak = 0
+                self.logger.event(
+                    "navigation_skipped_grounded",
+                    frame_id=nav.frame_id,
+                    action=nav.decision.action,
+                    confidence=nav.decision.confidence,
+                )
+                return False
             cmd = self._map_action(nav.decision)
             await self._post_command(cmd)
             self._consecutive_failures = 0  # Reset on success
@@ -253,6 +262,18 @@ class NavInterpreter:
         except Exception:
             logger.warning("failed to fetch battery level")
         return None
+
+    async def _is_grounded(self) -> bool:
+        assert self._client is not None, "call start() before _is_grounded()"
+        try:
+            health_url = self.command_url.rsplit("/", 1)[0] + "/health"
+            resp = await self._client.get(health_url)
+            if resp.status_code == 200:
+                telemetry = resp.json().get("telemetry", {})
+                return telemetry.get("connected") is True and telemetry.get("flying") is False
+        except Exception:
+            logger.warning("failed to fetch flight state")
+        return False
 
     async def _post_command(self, cmd: DroneCommand) -> None:
         assert self._client is not None, "call start() before _post_command()"

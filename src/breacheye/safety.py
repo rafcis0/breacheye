@@ -105,9 +105,13 @@ class SafetyController:
             await self.adapter.emergency()
             return
         if command.type == CommandType.HOVER:
+            if not await self._is_flying():
+                return
             await self.adapter.hover()
             return
         if command.type == CommandType.RC_CONTROL:
+            if not await self._is_flying():
+                raise RuntimeError("cannot rc_control while not flying")
             assert command.payload is not None
             duration_ms = min(command.payload.duration_ms, self.config.max_rc_duration_ms)
             ttl_ms = command.ttl_ms or self.config.default_ttl_ms
@@ -123,6 +127,10 @@ class SafetyController:
             await self.adapter.hover()
             return
         raise ValueError(f"unsupported command type {command.type}")
+
+    async def _is_flying(self) -> bool:
+        state = await self.adapter.get_state()
+        return bool(state.flying)
 
     def _clamp(self, value: int) -> int:
         limit = self.config.max_abs_velocity
