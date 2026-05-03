@@ -1,4 +1,5 @@
 import asyncio
+import json
 import socket
 
 import numpy as np
@@ -81,6 +82,14 @@ async def test_in_process_zmq_stub_pipeline_publishes_all_outputs(tmp_path) -> N
         assert (tmp_path / "zmq-test" / "rafa" / "frames" / "frame-00000003.jpg").exists()
         assert (tmp_path / "zmq-test" / "rafa" / "depth" / "frame-00000003.png").exists()
         assert (tmp_path / "zmq-test" / "rafa" / "depth_raw" / "frame-00000003.npy").exists()
+        events = [
+            json.loads(line)
+            for line in (tmp_path / "zmq-test-rafa.jsonl").read_text().splitlines()
+        ]
+        context_events = [event for event in events if event["event"] == "navigation_context_built"]
+        assert context_events
+        assert context_events[-1]["frame_id"] == 3
+        assert context_events[-1]["context"]["source"] == "stub_from_current_frame"
     finally:
         await pipeline.stop()
         input_pub.close(linger=0)

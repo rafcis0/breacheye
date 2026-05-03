@@ -49,6 +49,8 @@ Initial schema:
 
 ## Logging
 
+The pipeline now logs `navigation_context_built` before every navigation decision. In the current implementation the context source is `stub_from_current_frame`: it summarizes current-frame detections, relative center-depth, and recent accepted actions. Pose is marked `unavailable` until VGGT-MPS or a later reconstruction backend is wired in.
+
 Every model-mode navigation decision should eventually log:
 
 ```text
@@ -73,8 +75,8 @@ The VLM should choose an allowed action that advances toward unexplored frontier
 
 ## Implementation Order
 
-1. Add Pydantic schemas for `SpatialNavigationContext`, `MapPose`, `MapFrontier`, and `MapObject`.
-2. Add a stub context builder from current frame/action history so tests can land before VGGT-MPS integration.
-3. Add a VGGT-MPS output reader once local outputs exist.
-4. Feed context into Qwen server navigator and log raw context/model output.
-5. Update report to show per-frame camera frustum and context payload.
+1. Done: add Pydantic schemas for `SpatialNavigationContext`, `MapPose`, `MapFrontier`, and `MapObject`.
+2. Done: add a stub context builder from current frame/action history so tests can land before VGGT-MPS integration.
+3. Next: add a VGGT-MPS output reader once local outputs exist.
+4. Next: feed context into Qwen server navigator and log raw context/model output.
+5. Next: update report to show per-frame camera frustum and context payload.

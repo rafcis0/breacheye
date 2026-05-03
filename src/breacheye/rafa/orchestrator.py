@@ -28,10 +28,12 @@ from breacheye.rafa.schemas import (
     DetectionOutput,
     HealthOutput,
     MemoryStatus,
+    NavigationAction,
     ModelStatus,
     NavigationOutput,
     Throughput,
 )
+from breacheye.rafa.spatial_context import build_spatial_context, summarize_spatial_context
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class RafaPipeline:
         self._sockets: dict[str, object] = {}
         self._running = False
         self._frames = {"detection": 0, "depth": 0, "decision": 0}
+        self._recent_actions: list[NavigationAction] = []
         self._started_at = monotonic()
         self._last_health_at = 0.0
         self.errors = list(self.config.errors)
@@ -281,16 +284,30 @@ class RafaPipeline:
                 return None
 
     async def _safe_navigation(self, frame, frame_meta, detection, depth) -> NavigationOutput:
+        context = build_spatial_context(
+            meta=frame_meta,
+            detections=detection,
+            depth=depth,
+            recent_actions=self._recent_actions,
+        )
+        self.logger.event(
+            "navigation_context_built",
+            frame_id=frame_meta.frame_id,
+            summary=summarize_spatial_context(context),
+            context=context.model_dump(mode="json"),
+        )
         try:
             output = await self.navigator.decide(frame, frame_meta, detection, depth)
             validated = NavigationOutput.model_validate(output.model_dump())
             self._frames["decision"] += 1
+            self._recent_actions.append(validated.decision.action)
             return validated
         except (ValidationError, Exception) as exc:
             self.errors.append(f"navigation fallback on frame {frame_meta.frame_id}: {exc}")
             self.logger.event("navigation_fallback", frame_id=frame_meta.frame_id, error=str(exc))
             fallback = await HoverNavigator().decide(frame, frame_meta, detection, depth)
             self._frames["decision"] += 1
+            self._recent_actions.append(fallback.decision.action)
             return fallback
 
     async def _maybe_publish_health(self) -> None:

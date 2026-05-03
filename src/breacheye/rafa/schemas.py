@@ -126,6 +126,48 @@ class NavigationOutput(StrictModel):
     decision: NavigationDecision
 
 
+class MapPose(StrictModel):
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    yaw_deg: float = 0.0
+    source: str = "unknown"
+
+
+class LookingAt(StrictModel):
+    direction_label: str = "unknown"
+    nearest_obstacle_m: float | None = Field(default=None, ge=0.0)
+    visible_region: str = "unknown"
+
+
+class MapFrontier(StrictModel):
+    id: str = Field(min_length=1)
+    bearing_deg: float
+    distance_m: float | None = Field(default=None, ge=0.0)
+    label: str = Field(min_length=1)
+
+
+class MapObject(StrictModel):
+    id: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    relative_position: str = "unknown"
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class SpatialNavigationContext(StrictModel):
+    frame_id: int = Field(ge=0)
+    current_pose: MapPose = Field(default_factory=MapPose)
+    looking_at: LookingAt = Field(default_factory=LookingAt)
+    visited: list[str] = Field(default_factory=list)
+    unexplored_frontiers: list[MapFrontier] = Field(default_factory=list)
+    known_objects: list[MapObject] = Field(default_factory=list)
+    recent_actions: list[NavigationAction] = Field(default_factory=list)
+    allowed_actions: list[NavigationAction] = Field(
+        default_factory=lambda: ["hover", "move_forward", "rotate_left", "rotate_right"]
+    )
+    source: str = "stub"
+
+
 class ModelStatus(StrictModel):
     status: Literal["ready", "stub", "fallback", "error", "unavailable"]
     active: str | None = None
