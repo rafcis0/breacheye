@@ -198,4 +198,5 @@ The suite uses simulator, mocks, and in-process ZMQ. It does not require Tello h
 - [Rafa benchmark results](docs/rafa-benchmark-results.md): download/benchmark status and commands.
 - [Offline debug logging](docs/offline-debug-logging.md): JSONL logs for Tello Wi-Fi runs.
 - [3D reconstruction plan](docs/three-d-reconstruction-plan.md): staged mapping approach.
+- [Spatial VLM context](docs/spatial-vlm-context.md): map memory and camera-view context for navigation.
 - [LLM control boundary](docs/llm-control-boundary.md): safe planner interface.
