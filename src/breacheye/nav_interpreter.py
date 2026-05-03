@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from time import monotonic
@@ -20,10 +21,15 @@ class NavInterpreter:
         command_url: str = "http://localhost:8000/commands",
         log_dir: str | None = "logs",
         run_id: str | None = None,
+        bus: object | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.command_url = command_url
         self.logger = RunLogger("nav_interpreter", log_dir=log_dir, run_id=run_id)
+        self._bus = bus
+        self._latest_alert: dict | None = None
+        self._alert_task: object | None = None
+        self._depth_threshold: float = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45, minimum=0.0, maximum=1.0)
         self._socket = None
         self._client = None  # httpx.AsyncClient
         self._poller = None
@@ -57,7 +63,30 @@ class NavInterpreter:
         self._poller.register(self._socket, zmq.POLLIN)
         self.logger.event("nav_interpreter_start", endpoint=self.endpoint, command_url=self.command_url)
 
+        if self._bus is not None:
+            self._alert_task = asyncio.create_task(self._subscribe_alerts())
+
+    async def _subscribe_alerts(self) -> None:
+        """Subscribe to obstacle alerts on the bus. Keeps only latest (CONFLATE pattern)."""
+        try:
+            queue = await self._bus.subscribe("drone.obstacle_alert")
+            while True:
+                try:
+                    self._latest_alert = await queue.get()
+                except asyncio.CancelledError:
+                    await self._bus.unsubscribe("drone.obstacle_alert", queue)
+                    raise
+        except asyncio.CancelledError:
+            pass
+
     async def aclose(self) -> None:
+        if self._alert_task is not None:
+            self._alert_task.cancel()
+            try:
+                await self._alert_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._alert_task = None
         if self._socket is not None:
             self._socket.close(linger=0)
             self._socket = None
@@ -211,6 +240,24 @@ class NavInterpreter:
         return cmd
 
     def _guard_action(self, decision: NavigationDecision) -> str:
+        # Depth guard — blocks forward movement when obstacle detected
+        if decision.action == "move_forward" and self._latest_alert is not None:
+            alert = self._latest_alert
+            nearest = alert.get("nearest_obstacle_m", 1.0)
+            blocked = alert.get("blocked", False)
+            if blocked or nearest < self._depth_threshold:
+                self.logger.event(
+                    "navigation_depth_guard",
+                    frame_id=alert.get("frame_id"),
+                    requested_action="move_forward",
+                    substituted_action="rotate_right",
+                    nearest=nearest,
+                    zones=alert.get("zones"),
+                    threshold=self._depth_threshold,
+                )
+                self._forward_streak = 0
+                return "rotate_right"
+
         if decision.action == "move_forward":
             self._forward_streak += 1
             self._hover_streak = 0
