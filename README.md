@@ -156,6 +156,46 @@ breacheye fly --mode tello --rafa-mode models --fps 5 --auto-takeoff
 
 The launcher writes a preflight snapshot, starts the safety harness, starts Rafa, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest`.
 
+## Full-Flow Checklist
+
+Ready on `main`:
+
+- [x] Safe Tello harness: structured commands only, velocity clamp, TTL clamp, watchdog hover, keepalive.
+- [x] Tello hardware adapter through `djitellopy`.
+- [x] Mocked Tello adapter tests; no hardware required in CI.
+- [x] Rafa ZMQ pipeline with `stub`, `detector-only`, and `models` modes.
+- [x] Frame input contract on `5555`: MessagePack JPEG payloads.
+- [x] Rafa outputs: detections `5556`, depth `5557`, navigation `5558`, health `5559`.
+- [x] Stub mode works without model weights.
+- [x] Model-mode adapters for Qwen server navigation and Depth Anything V2.
+- [x] Offline logs save source frames, Rafa frames, depth `.npy`, depth PNGs, nav context, health, and event JSONL.
+- [x] Spatial navigation context schema and `navigation_context_built` logs.
+- [x] One-command simulator loop: `breacheye fly --mode sim --rafa-mode stub --duration-s 20`.
+- [x] One-command Tello loop: `breacheye fly --mode tello --rafa-mode models --fps 5`.
+- [x] Harness-owned frame source, so only the harness owns the Tello connection.
+- [x] Nav bridge from Rafa navigation decisions to `/commands`.
+- [x] README and hardware runbook document the flow.
+
+Partially ready:
+
+- [ ] Real Tello flight has not been hardware-smoked in this repo session. First run should be `breacheye smoke --mode tello`.
+- [ ] Model-mode readiness depends on local env vars and weights: `BREACHEYE_QWEN_MODEL`, `BREACHEYE_QWEN_MMPROJ`, `BREACHEYE_QWEN_SERVER_URL`, and `BREACHEYE_DEPTH_ANYTHING_PATH`.
+- [ ] Qwen can be run through a warm `llama-server`, but model-mode should be smoke-tested again after any network/interface switch.
+- [ ] VGGT-MPS is not wired yet. Current spatial context is `stub_from_current_frame`.
+- [ ] Mapping/SLAM is not live. Prep/docs/context schemas exist, but real pose/frontier updates from VGGT are pending.
+
+Still missing:
+
+- [ ] Hardware smoke on Tello Wi-Fi: connect, telemetry, video, takeoff, hover, land.
+- [ ] Run `breacheye rafa doctor --require-models` with final local model paths.
+- [ ] Run `breacheye fly --mode sim --rafa-mode models --duration-s 20` with Qwen + Depth Anything before touching the drone.
+- [ ] Run the Tello loop without auto takeoff first: `breacheye fly --mode tello --rafa-mode models --fps 5`; verify `/health`, logs, frame publisher logs, and Rafa nav logs.
+- [ ] Only after that, run `breacheye fly --mode tello --rafa-mode models --fps 5 --auto-takeoff`.
+- [ ] Add VGGT-MPS runner once the download completes.
+- [ ] Convert VGGT output into real `SpatialNavigationContext`: pose, looking direction, visited regions, frontiers, known objects.
+- [ ] Feed real spatial context into the Qwen prompt. It is logged now, but not yet injected into the navigator prompt.
+- [ ] Add UI/report view for reconstruction, camera frustum, and model decision trail.
+
 ## API
 
 - `GET /health`: adapter, telemetry, and video status.
