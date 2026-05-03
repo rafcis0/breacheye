@@ -108,7 +108,7 @@ def _bbox_relative_position(x1: int, x2: int, width: int | None) -> str:
 def _resolve_frontier_clearance(value: float | None) -> float:
     if value is None:
         try:
-            value = float(os.environ.get("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.35))
+            value = float(os.environ.get("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45))
         except (TypeError, ValueError):
-            value = 0.35
+            value = 0.45
     return max(0.0, min(10.0, value))

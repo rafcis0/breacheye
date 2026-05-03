@@ -176,7 +176,7 @@ export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
 Navigation clearance is tunable. The current value is a normalized relative Depth Anything center-band depth, not true meters: lower values mean closer/blocked, higher values mean farther/clearer. Increase it to be more cautious; decrease it to allow tighter spaces.
 
 ```bash
-export BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M=0.35
+export BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M=0.45
 export BREACHEYE_NAV_SEARCH_SCAN_DEGREES=20
 export BREACHEYE_NAV_MAX_HOVER_STREAK=4
 ```
@@ -190,6 +190,7 @@ The launcher writes a preflight snapshot, starts Rafa/background processes befor
 Ready on `main`:
 
 - [x] Safe Tello harness: structured commands only, velocity clamp, TTL clamp, watchdog hover, keepalive.
+- [x] Critical attitude watchdog: if the harness sees severe pitch/roll while flying, it sends `emergency` without waiting for Rafa or nav.
 - [x] Tello hardware adapter through `djitellopy`.
 - [x] Mocked Tello adapter tests; no hardware required in CI.
 - [x] Rafa ZMQ pipeline with `stub`, `detector-only`, and `models` modes.

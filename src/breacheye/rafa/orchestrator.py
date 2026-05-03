@@ -64,7 +64,7 @@ class RafaPipeline:
         self._running = False
         self._frames = {"detection": 0, "depth": 0, "decision": 0}
         self._recent_actions: list[NavigationAction] = []
-        self._min_forward_clearance_m = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.35)
+        self._min_forward_clearance_m = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45)
         self._search_tactic = NodeSearchTactic(
             clearance_threshold=self._min_forward_clearance_m,
             scan_degrees=_env_int("BREACHEYE_NAV_SEARCH_SCAN_DEGREES", 20, minimum=5, maximum=90),

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from breacheye.rafa.schemas import BBox2D, DepthOutput, Detection, DetectionOutput, FrameInput
 from breacheye.rafa.spatial_context import build_spatial_context, summarize_spatial_context
@@ -46,6 +47,19 @@ def test_spatial_context_ignores_isolated_depth_noise() -> None:
 
     assert context.looking_at.nearest_obstacle_m > 0.35
     assert context.unexplored_frontiers
+
+
+def test_spatial_context_default_clearance_blocks_marginal_forward_depth(monkeypatch) -> None:
+    monkeypatch.delenv("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", raising=False)
+    meta = FrameInput(frame_id=10, timestamp=1.0, width=90, height=60, jpeg_bytes=b"jpg")
+    detections = DetectionOutput(frame_id=10, processing_ms=1, detections=[])
+    depth_values = np.ones((60, 90), dtype=np.float32) * 0.43
+    depth = DepthOutput(frame_id=10, shape=depth_values.shape, depth_bytes=depth_values.tobytes())
+
+    context = build_spatial_context(meta=meta, detections=detections, depth=depth, recent_actions=[])
+
+    assert context.looking_at.nearest_obstacle_m == pytest.approx(0.43)
+    assert context.unexplored_frontiers == []
 
 
 def test_spatial_context_frontier_clearance_is_configurable() -> None:

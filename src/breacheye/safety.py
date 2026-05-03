@@ -24,6 +24,7 @@ class SafetyConfig:
     watchdog_interval_s: float = 0.5
     stale_command_s: float = 2.0
     keepalive_interval_s: float = 5.0
+    critical_attitude_deg: int = 60
     land_on_adapter_error: bool = False
 
 
@@ -49,6 +50,7 @@ class SafetyController:
         self._watchdog_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self._closed = False
+        self._watchdog_emergency_sent = False
 
     async def start(self) -> None:
         if self._watchdog_task is None:
@@ -99,6 +101,7 @@ class SafetyController:
         if command.type == CommandType.TAKEOFF:
             await self._preflight_takeoff()
             await self.adapter.takeoff()
+            self._watchdog_emergency_sent = False
             return
         if command.type == CommandType.LAND:
             if not await self._is_flying():
@@ -164,6 +167,21 @@ class SafetyController:
                 now = monotonic()
                 if not self._lock.locked():
                     async with self._lock:
+                        emergency_reasons = self._critical_attitude_reasons(telemetry)
+                        if emergency_reasons and not self._watchdog_emergency_sent:
+                            await self.adapter.emergency()
+                            self._watchdog_emergency_sent = True
+                            self._last_command_at = monotonic()
+                            await self.bus.publish(
+                                "drone.command_results",
+                                CommandResult(
+                                    command_id="watchdog_emergency",
+                                    status=CommandStatus.EXECUTED,
+                                    reason="critical attitude: " + ", ".join(emergency_reasons),
+                                ),
+                            )
+                            continue
+
                         if telemetry.flying and now - self._last_command_at > self.config.stale_command_s:
                             await self.adapter.hover()
                             self._last_command_at = monotonic()
@@ -189,3 +207,25 @@ class SafetyController:
                         await self.adapter.land()
                     except Exception:
                         pass
+
+    def _critical_attitude_reasons(self, telemetry: DroneTelemetry) -> list[str]:
+        if not telemetry.connected or not telemetry.flying:
+            return []
+        limit = max(1, self.config.critical_attitude_deg)
+        reasons: list[str] = []
+        pitch = _float_or_none(telemetry.raw.get("pitch"))
+        roll = _float_or_none(telemetry.raw.get("roll"))
+        if pitch is not None and abs(pitch) >= limit:
+            reasons.append(f"pitch={pitch:g}")
+        if roll is not None and abs(roll) >= limit:
+            reasons.append(f"roll={roll:g}")
+        return reasons
+
+
+def _float_or_none(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
