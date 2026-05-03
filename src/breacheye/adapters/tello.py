@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 
 from breacheye.adapters.base import DroneAdapter, DroneState
+
+logger = logging.getLogger(__name__)
 
 
 class TelloAdapter(DroneAdapter):
@@ -81,6 +84,10 @@ class TelloAdapter(DroneAdapter):
         up_down: int,
         yaw: int,
     ) -> None:
+        logger.info(
+            "tello_call method=send_rc_control args=lr=%d fb=%d ud=%d yaw=%d",
+            left_right, forward_back, up_down, yaw,
+        )
         await self._call(
             "send_rc_control",
             left_right,
@@ -88,6 +95,7 @@ class TelloAdapter(DroneAdapter):
             up_down,
             yaw,
         )
+        logger.info("tello_ok method=send_rc_control")
 
     async def keepalive(self) -> None:
         # Some Tello firmware responds `unknown command: keepalive`; neutral RC
@@ -132,7 +140,15 @@ class TelloAdapter(DroneAdapter):
     async def _call(self, name: str, *args) -> None:
         if self._tello is None:
             raise RuntimeError("drone is not connected")
-        await asyncio.to_thread(getattr(self._tello, name), *args)
+        if name != "send_rc_control":
+            logger.info("tello_call method=%s args=%s", name, args)
+        try:
+            await asyncio.to_thread(getattr(self._tello, name), *args)
+        except Exception as exc:
+            logger.error("tello_error method=%s error=%s", name, str(exc))
+            raise
+        if name != "send_rc_control":
+            logger.info("tello_ok method=%s", name)
 
 
 def _int_or_none(value) -> int | None:

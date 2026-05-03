@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from time import monotonic
 
@@ -13,6 +14,8 @@ from breacheye.models import (
     DroneCommand,
     DroneTelemetry,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -101,6 +104,7 @@ class SafetyController:
         )
 
     async def _execute_locked(self, command: DroneCommand) -> None:
+        logger.info("cmd_execute id=%s type=%s", command.command_id, command.type)
         if command.type == CommandType.TAKEOFF:
             await self._preflight_takeoff()
             await self.adapter.takeoff()
@@ -108,6 +112,7 @@ class SafetyController:
             return
         if command.type == CommandType.LAND:
             if not await self._is_flying():
+                logger.warning("cmd_noop id=%s type=%s reason=not_flying", command.command_id, command.type)
                 return
             await self.adapter.land()
             return
@@ -116,6 +121,7 @@ class SafetyController:
             return
         if command.type == CommandType.HOVER:
             if not await self._is_flying():
+                logger.warning("cmd_noop id=%s type=%s reason=not_flying", command.command_id, command.type)
                 return
             await self.adapter.hover()
             return
@@ -123,16 +129,18 @@ class SafetyController:
             if not await self._is_flying():
                 raise RuntimeError("cannot rc_control while not flying")
             assert command.payload is not None
-            duration_ms = min(command.payload.duration_ms, self.config.max_rc_duration_ms)
+            raw_duration = command.payload.duration_ms
+            duration_ms = min(raw_duration, self.config.max_rc_duration_ms)
+            if duration_ms != raw_duration:
+                logger.info("cmd_duration_clamp original=%d clamped=%d", raw_duration, duration_ms)
             ttl_ms = command.ttl_ms or self.config.default_ttl_ms
             if duration_ms > ttl_ms:
                 raise ValueError("rc_control duration_ms cannot exceed command ttl_ms")
-            await self.adapter.rc_control(
-                self._clamp(command.payload.left_right),
-                self._clamp(command.payload.forward_back),
-                self._clamp(command.payload.up_down),
-                self._clamp(command.payload.yaw),
-            )
+            lr = self._clamp_log("left_right", command.payload.left_right)
+            fb = self._clamp_log("forward_back", command.payload.forward_back)
+            ud = self._clamp_log("up_down", command.payload.up_down)
+            yaw = self._clamp_log("yaw", command.payload.yaw)
+            await self.adapter.rc_control(lr, fb, ud, yaw)
             await asyncio.sleep(duration_ms / 1000)
             await self.adapter.hover()
             return
@@ -170,6 +178,12 @@ class SafetyController:
     def _clamp(self, value: int) -> int:
         limit = self.config.max_abs_velocity
         return max(-limit, min(limit, value))
+
+    def _clamp_log(self, axis: str, value: int) -> int:
+        clamped = self._clamp(value)
+        if clamped != value:
+            logger.info("cmd_clamp axis=%s original=%d clamped=%d", axis, value, clamped)
+        return clamped
 
     async def _watchdog_loop(self) -> None:
         while not self._closed:
