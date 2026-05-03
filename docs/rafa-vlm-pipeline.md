@@ -44,6 +44,7 @@ Rafa validates every outgoing payload against Pydantic schemas before publishing
 
 - Detections on `5556`: POI JSON structure from `CONSTITUTION.md`.
 - Depth on `5557`: msgpack `{frame_id, timestamp, shape, dtype, unit, depth_bytes}` where `depth_bytes` is raw `float32`.
+- Model-mode Depth Anything raw predictions are normalized into the contract unit `relative_0_near_1_far` before publishing or logging. Downstream gates should treat lower center-band values as closer/blocked and higher values as farther/clearer.
 - Navigation on `5558`: JSON high-level action from the allowed action set. Cooper maps that action to drone commands.
 - Health on `5559`: JSON pipeline status, model state, throughput, memory, and errors.
 

@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const API_URL = '/api/map/point-cloud/latest'
+const DEPTH_URL = '/api/map/depth/latest'
 const MAX_POINTS = 12000
 
 function fallbackCloud() {
@@ -52,6 +53,8 @@ export default function Map3D() {
   const rendererRef = useRef(null)
   const labelRef = useRef(null)
   const threeRef = useRef(null)
+  const [depthSrc, setDepthSrc] = useState(null)
+  const [depthStatus, setDepthStatus] = useState('waiting for depth map')
 
   useEffect(() => {
     const root = rootRef.current
@@ -164,13 +167,50 @@ export default function Map3D() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadDepth() {
+      try {
+        const src = `${DEPTH_URL}?t=${Date.now()}`
+        const response = await fetch(src, { cache: 'no-store' })
+        if (!response.ok) throw new Error(`status ${response.status}`)
+        if (!cancelled) {
+          setDepthSrc(src)
+          setDepthStatus('latest relative depth')
+        }
+      } catch {
+        if (!cancelled) {
+          setDepthStatus('waiting for depth map')
+        }
+      }
+    }
+
+    loadDepth()
+    const timer = setInterval(loadDepth, 1000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
+
   return (
     <div className="map3d">
       <div className="map3d__header">
         <span className="map3d__title">3D RECON</span>
         <span ref={labelRef} className="map3d__status">waiting for 3D reconstruction</span>
       </div>
-      <div ref={rootRef} className="map3d__viewport" />
+      <div className="map3d__body">
+        <div ref={rootRef} className="map3d__viewport" />
+        <div className="map3d__depth">
+          {depthSrc ? (
+            <img src={depthSrc} alt="Latest model depth map" className="map3d__depth-image" />
+          ) : (
+            <div className="map3d__depth-empty" />
+          )}
+          <span className="map3d__depth-status">{depthStatus}</span>
+        </div>
+      </div>
     </div>
   )
 }

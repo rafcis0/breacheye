@@ -7,7 +7,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 
 @dataclass(frozen=True)
@@ -142,9 +142,15 @@ def run_flight(config: FlightLaunchConfig) -> int:
         if config.auto_takeoff:
             if config.mode == "tello":
                 _wait_for_takeoff_preflight(config.base_url, prefix="[flight]")
-            _post_takeoff(config.base_url, climb_cm=config.takeoff_climb_cm)
-            if config.mode == "tello":
-                _start_harness_video(config.base_url, prefix="[flight]")
+            _post_takeoff(
+                config.base_url,
+                climb_cm=config.takeoff_climb_cm,
+                after_takeoff=(
+                    lambda: _start_harness_video(config.base_url, prefix="[flight]")
+                    if config.mode == "tello"
+                    else None
+                ),
+            )
 
         deadline = time.monotonic() + config.duration_s if config.duration_s else None
         while True:
@@ -292,9 +298,15 @@ def _wait_for_takeoff_preflight(
     raise RuntimeError(f"refusing auto-takeoff: telemetry was not ready ({summary})")
 
 
-def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
+def _post_takeoff(
+    base_url: str,
+    climb_cm: int = 100,
+    after_takeoff: Callable[[], None] | None = None,
+) -> None:
     if _wait_for_flying(base_url, timeout_s=0.1):
         print("[flight] drone already reports flying; skipping takeoff command", flush=True)
+        if after_takeoff is not None:
+            after_takeoff()
         return
 
     _post_command_checked(
@@ -302,6 +314,8 @@ def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
         {"type": "takeoff", "issued_by": "flight_launcher"},
         label="takeoff",
     )
+    if after_takeoff is not None:
+        after_takeoff()
 
     climb_cm = max(0, min(150, int(climb_cm)))
     if climb_cm <= 0:
@@ -688,8 +702,11 @@ def run_demo(
 
         if resolved_mode == "live" and auto_takeoff:
             _wait_for_takeoff_preflight(base_url, prefix="[demo]")
-            _post_takeoff(base_url, climb_cm=takeoff_climb_cm)
-            _start_harness_video(base_url, prefix="[demo]")
+            _post_takeoff(
+                base_url,
+                climb_cm=takeoff_climb_cm,
+                after_takeoff=lambda: _start_harness_video(base_url, prefix="[demo]"),
+            )
 
         print("\n[demo] all components running — Ctrl+C to stop\n", flush=True)
 

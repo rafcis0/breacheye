@@ -62,6 +62,19 @@ def test_spatial_context_default_clearance_blocks_marginal_forward_depth(monkeyp
     assert context.unexplored_frontiers == []
 
 
+def test_spatial_context_blocks_lower_forward_obstacle() -> None:
+    meta = FrameInput(frame_id=11, timestamp=1.0, width=90, height=60, jpeg_bytes=b"jpg")
+    detections = DetectionOutput(frame_id=11, processing_ms=1, detections=[])
+    depth_values = np.ones((60, 90), dtype=np.float32) * 0.8
+    depth_values[40:55, 30:60] = 0.2
+    depth = DepthOutput(frame_id=11, shape=depth_values.shape, depth_bytes=depth_values.tobytes())
+
+    context = build_spatial_context(meta=meta, detections=detections, depth=depth, recent_actions=[])
+
+    assert context.looking_at.nearest_obstacle_m == pytest.approx(0.2)
+    assert context.unexplored_frontiers == []
+
+
 def test_spatial_context_frontier_clearance_is_configurable() -> None:
     meta = FrameInput(frame_id=9, timestamp=1.0, width=90, height=60, jpeg_bytes=b"jpg")
     detections = DetectionOutput(frame_id=9, processing_ms=1, detections=[])

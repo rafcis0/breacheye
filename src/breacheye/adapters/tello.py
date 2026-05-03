@@ -17,10 +17,11 @@ class TelloAdapter(DroneAdapter):
     def __init__(self) -> None:
         self._tello = None
         self._connected = False
-        self._hover_left_right = _env_int("BREACHEYE_TELLO_HOVER_LEFT_RIGHT", 0)
-        self._hover_forward_back = _env_int("BREACHEYE_TELLO_HOVER_FORWARD_BACK", 0)
-        self._hover_up_down = _env_int("BREACHEYE_TELLO_HOVER_UP_DOWN", 0)
-        self._hover_yaw = _env_int("BREACHEYE_TELLO_HOVER_YAW", 0)
+        self._hover_trim_enabled = _env_bool("BREACHEYE_TELLO_ENABLE_HOVER_TRIM", False)
+        self._hover_left_right = _env_int("BREACHEYE_TELLO_HOVER_LEFT_RIGHT", 0) if self._hover_trim_enabled else 0
+        self._hover_forward_back = _env_int("BREACHEYE_TELLO_HOVER_FORWARD_BACK", 0) if self._hover_trim_enabled else 0
+        self._hover_up_down = _env_int("BREACHEYE_TELLO_HOVER_UP_DOWN", 0) if self._hover_trim_enabled else 0
+        self._hover_yaw = _env_int("BREACHEYE_TELLO_HOVER_YAW", 0) if self._hover_trim_enabled else 0
 
     async def connect(self) -> None:
         def _connect() -> None:
@@ -129,3 +130,10 @@ def _env_int(name: str, default: int) -> int:
         return max(-20, min(20, int(os.environ.get(name, default))))
     except ValueError:
         return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
