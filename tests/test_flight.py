@@ -1,4 +1,4 @@
-from breacheye.flight import FlightLaunchConfig, _apply_local_model_defaults, build_process_specs
+from breacheye.flight import FlightLaunchConfig, _apply_local_model_defaults, _post_shutdown_land, build_process_specs
 
 
 def test_tello_flight_defaults_to_harness_frame_source() -> None:
@@ -43,3 +43,37 @@ def test_model_flight_applies_local_model_defaults(monkeypatch, tmp_path) -> Non
     assert env["BREACHEYE_QWEN_MMPROJ"] == str(mmproj)
     assert env["BREACHEYE_DEPTH_ANYTHING_PATH"] == str(depth)
     assert env["BREACHEYE_QWEN_SERVER_URL"] == "http://127.0.0.1:56262"
+
+
+def test_shutdown_land_posts_hover_then_land(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload=None) -> None:
+            self._payload = payload or {}
+            self.text = str(self._payload)
+
+        def json(self):
+            return self._payload
+
+    def fake_get(url, timeout):
+        calls.append(("get", url, timeout))
+        return FakeResponse({"telemetry": {"flying": True}})
+
+    def fake_post(url, json, timeout):
+        calls.append(("post", url, json["type"], timeout))
+        return FakeResponse({"status": "executed"})
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    _post_shutdown_land("http://harness")
+
+    assert calls == [
+        ("get", "http://harness/health", 1.5),
+        ("post", "http://harness/commands", "hover", 8.0),
+        ("post", "http://harness/commands", "land", 8.0),
+    ]

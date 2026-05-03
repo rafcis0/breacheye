@@ -252,6 +252,72 @@
 
 /* ── Telemetry HUD ───────────────────────────────────────── */
 
+.flight-controls {
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 6px;
+  background: rgba(127, 29, 29, 0.18);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+.flight-controls__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(248, 113, 113, 0.18);
+}
+
+.flight-controls__title,
+.flight-controls__last {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.flight-controls__title {
+  color: #fecaca;
+}
+
+.flight-controls__last {
+  color: #fca5a5;
+}
+
+.flight-controls__buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 14px 14px;
+}
+
+.flight-controls__button {
+  height: 40px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #fff;
+  cursor: pointer;
+}
+
+.flight-controls__button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.flight-controls__button--land {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(180, 83, 9, 0.82);
+}
+
+.flight-controls__button--emergency {
+  border-color: rgba(248, 113, 113, 0.75);
+  background: rgba(185, 28, 28, 0.9);
+}
+
 .telemetry-hud {
   flex: 1;
   min-height: 120px;

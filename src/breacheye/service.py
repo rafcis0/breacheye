@@ -13,7 +13,7 @@ from breacheye.adapters.base import DroneAdapter
 from breacheye.adapters.sim import SimAdapter
 from breacheye.adapters.tello import TelloAdapter
 from breacheye.bus import AsyncEventBus
-from breacheye.models import CommandResult, CommandStatus, DroneCommand
+from breacheye.models import CommandResult, CommandStatus, CommandType, DroneCommand
 from breacheye.operator import OperatorCommand, OperatorHandler
 from breacheye.safety import SafetyController
 from breacheye.state_machine import FlightStateMachine
@@ -103,6 +103,13 @@ class HarnessRuntime:
             self._zmq_ctx = None
 
     async def stop(self) -> None:
+        try:
+            telemetry = await self.safety.telemetry()
+            if telemetry.flying:
+                log.warning("runtime shutdown while flying; attempting land")
+                await self.safety.execute(DroneCommand(type=CommandType.LAND, issued_by="runtime_shutdown"))
+        except Exception as exc:
+            log.warning("shutdown landing attempt failed: %s", exc)
         if self._zmq_task is not None:
             self._zmq_task.cancel()
             try:

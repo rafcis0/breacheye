@@ -122,7 +122,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
     try:
         for spec in specs:
             print(f"[flight] starting {spec.name}: {' '.join(spec.argv)}", flush=True)
-            procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy())))
+            procs.append((spec.name, subprocess.Popen(spec.argv, env=os.environ.copy(), start_new_session=True)))
             if spec.name == "harness":
                 _wait_for_harness(config.base_url)
             elif spec.name == "rafa":
@@ -148,7 +148,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
         print("[flight] interrupted; stopping", flush=True)
         return 130
     finally:
-        _stop_processes(procs)
+        _stop_flight_processes(procs, config.base_url)
 
 
 def _resolve_frame_source(config: FlightLaunchConfig) -> str:
@@ -234,6 +234,39 @@ def _post_takeoff(base_url: str) -> None:
     print(f"[flight] takeoff response: {response.text}", flush=True)
 
 
+def _post_shutdown_land(base_url: str) -> None:
+    import httpx
+
+    try:
+        health = httpx.get(f"{base_url}/health", timeout=1.5)
+        if health.status_code == 200 and not health.json().get("telemetry", {}).get("flying"):
+            print("[flight] drone already grounded", flush=True)
+            return
+    except Exception as exc:
+        print(f"[flight] could not read health before landing: {exc}", flush=True)
+
+    for command_type in ("hover", "land"):
+        try:
+            response = httpx.post(
+                f"{base_url}/commands",
+                json={"type": command_type, "issued_by": "flight_launcher_shutdown"},
+                timeout=8.0,
+            )
+            print(f"[flight] shutdown {command_type} response: {response.text}", flush=True)
+        except Exception as exc:
+            print(f"[flight] shutdown {command_type} failed: {exc}", flush=True)
+        time.sleep(0.25)
+
+
+def _stop_flight_processes(procs: Sequence[tuple[str, subprocess.Popen]], base_url: str) -> None:
+    non_harness = [(name, proc) for name, proc in procs if name != "harness"]
+    harness = [(name, proc) for name, proc in procs if name == "harness"]
+    _stop_processes(non_harness)
+    if harness and harness[0][1].poll() is None:
+        _post_shutdown_land(base_url)
+    _stop_processes(harness)
+
+
 def _stop_processes(procs: Sequence[tuple[str, subprocess.Popen]]) -> None:
     for name, proc in reversed(procs):
         if proc.poll() is not None:
@@ -246,6 +279,8 @@ def _stop_processes(procs: Sequence[tuple[str, subprocess.Popen]]) -> None:
         try:
             proc.wait(timeout=remaining)
         except subprocess.TimeoutExpired:
+            proc.terminate()
+        except KeyboardInterrupt:
             proc.terminate()
     for _name, proc in reversed(procs):
         if proc.poll() is None:
