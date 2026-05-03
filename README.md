@@ -16,7 +16,7 @@ The repo is set up so Cooper and Rafa can work independently against frozen ZMQ 
 - H+2 contract path: mock/live frame publisher can send JPEG msgpack frames on `5555`; Rafa publishes detections, depth, navigation, and health on `5556-5559`.
 - Flight launcher: `breacheye fly` starts the harness, Rafa, frame publisher, and nav bridge with one command.
 - Real model adapters: Qwen server navigation and Depth Anything V2 depth are wired for local weights. Model files stay ignored under `models/`.
-- Offline debug logs: every run writes JSONL events plus saved source frames; model depth outputs also save colorized PNGs for frame-by-frame inspection.
+- Debug logs and reports: every run writes JSONL events plus saved source frames, monitor frame samples, model decisions, command results, depth images, and an HTML decision timeline report.
 
 ## Repo Layout
 
@@ -270,6 +270,28 @@ Expected local weight environment variables:
 Depth artifacts are written under `logs/<run_id>/rafa/depth/frame-XXXXXXXX.png`, with matching JSONL `depth_image_saved` events. Source input frames are written under `logs/<run_id>/rafa/frames/`.
 
 Current fallback rule: if these are missing, `breacheye rafa --mode models` must publish degraded health and use safe stub/rule fallbacks rather than crashing the demo.
+
+## Debugging And Reports
+
+Run this in a separate terminal while the drone stack is live. It tails the current run logs, polls harness health, samples `/frame/latest`, saves monitor snapshots, and prints compact frame/decision/command/map lines:
+
+```bash
+scripts/watch_live_debug.sh
+```
+
+Equivalent CLI:
+
+```bash
+breacheye monitor --run-id latest --harness-url http://127.0.0.1:8000
+```
+
+Build the offline HTML report after a run:
+
+```bash
+breacheye report --run-id latest
+```
+
+The report lands at `logs/<run_id>/report/index.html` and includes a decision timeline, saved drone/depth images, model reasoning, command payload/status, frame latency, map updates, and monitor samples.
 
 ## Tests
 

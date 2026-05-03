@@ -32,6 +32,20 @@ def main() -> None:
     offline.add_argument("--log-dir", default="logs")
     offline.add_argument("--run-id")
 
+    report = subparsers.add_parser("report", help="Build an HTML report for a logged run.")
+    report.add_argument("--run-id", default="latest", help="Run id to report, or latest.")
+    report.add_argument("--log-dir", default="logs")
+    report.add_argument("--output")
+
+    monitor = subparsers.add_parser("monitor", help="Watch live harness health, frames, and run logs.")
+    monitor.add_argument("--run-id", default="latest", help="Run id to watch, or latest.")
+    monitor.add_argument("--log-dir", default="logs")
+    monitor.add_argument("--harness-url", default="http://127.0.0.1:8000")
+    monitor.add_argument("--interval-s", type=float, default=1.0)
+    monitor.add_argument("--frame-interval-s", type=float, default=2.0)
+    monitor.add_argument("--duration-s", type=float)
+    monitor.add_argument("--no-save-frames", action="store_true")
+
     rafa = subparsers.add_parser("rafa", help="Run Rafa's local ZMQ VLM pipeline.")
     rafa.add_argument("rafa_command", nargs="?", choices=["run", "doctor"], default="run")
     rafa.add_argument("--mode", choices=["stub", "models", "detector-only"], default="stub")
@@ -98,6 +112,20 @@ def main() -> None:
         raise SystemExit(asyncio.run(_smoke(args.mode)))
     elif args.command == "offline":
         _offline(args.offline_command, log_dir=args.log_dir, run_id=args.run_id)
+    elif args.command == "report":
+        _report(run_id=args.run_id, log_dir=args.log_dir, output=args.output)
+    elif args.command == "monitor":
+        raise SystemExit(
+            _monitor(
+                run_id=args.run_id,
+                log_dir=args.log_dir,
+                harness_url=args.harness_url,
+                interval_s=args.interval_s,
+                frame_interval_s=args.frame_interval_s,
+                duration_s=args.duration_s,
+                save_frames=not args.no_save_frames,
+            )
+        )
     elif args.command == "rafa":
         if args.rafa_command == "doctor":
             _rafa_doctor(json_output=args.json, require_models=args.require_models)
@@ -271,6 +299,42 @@ def _offline(command: str, log_dir: str = "logs", run_id: str | None = None) -> 
     else:
         path = create_bundle(log_dir=log_dir, run_id=run_id)
     print(path)
+
+
+def _report(run_id: str, log_dir: str = "logs", output: str | None = None) -> None:
+    from pathlib import Path
+
+    from ai.run_report import build_report
+    from breacheye.monitor import resolve_run_id
+
+    resolved = resolve_run_id(Path(log_dir).expanduser(), run_id)
+    if resolved is None:
+        raise SystemExit(f"no run logs found in {log_dir!r}")
+    path = build_report(Path(log_dir).expanduser(), resolved, Path(output) if output else None)
+    print(path)
+
+
+def _monitor(
+    *,
+    run_id: str,
+    log_dir: str,
+    harness_url: str,
+    interval_s: float,
+    frame_interval_s: float,
+    duration_s: float | None,
+    save_frames: bool,
+) -> int:
+    from breacheye.monitor import monitor_run
+
+    return monitor_run(
+        log_dir=log_dir,
+        run_id=run_id,
+        harness_url=harness_url,
+        interval_s=interval_s,
+        frame_interval_s=frame_interval_s,
+        duration_s=duration_s,
+        save_frames=save_frames,
+    )
 
 
 if __name__ == "__main__":

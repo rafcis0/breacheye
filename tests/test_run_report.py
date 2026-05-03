@@ -25,9 +25,53 @@ def test_run_report_builds_html_with_assets(tmp_path) -> None:
                 json.dumps({"event": "frame_received", "frame_id": 1}),
                 json.dumps(
                     {
+                        "component": "rafa",
+                        "event": "navigation_decision_built",
+                        "frame_id": 1,
+                        "action": "hover",
+                        "confidence": 0.7,
+                        "reasoning": "person close to the drone",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "component": "rafa",
+                        "event": "frame_pipeline_summary",
+                        "frame_id": 1,
+                        "total_ms": 123,
+                        "navigation_ms": 45,
+                    }
+                ),
+                json.dumps(
+                    {
                         "event": "publish",
                         "channel": "navigation",
                         "summary": {"frame_id": 1, "action": "hover", "confidence": 0.7},
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (log_dir / f"{run_id}-nav_interpreter.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "component": "nav_interpreter",
+                        "event": "command_posted",
+                        "command_type": "hover",
+                        "response_status": "executed",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "component": "nav_interpreter",
+                        "event": "navigation_executed",
+                        "frame_id": 1,
+                        "command_type": "hover",
+                        "command_id": "cmd-1",
                     }
                 ),
             ]
@@ -41,6 +85,9 @@ def test_run_report_builds_html_with_assets(tmp_path) -> None:
     assert report.exists()
     html = report.read_text(encoding="utf-8")
     assert "BreachEye Run Report" in html
+    assert "Decision Timeline" in html
     assert "hover" in html
+    assert "person close to the drone" in html
+    assert "total=123ms" in html
     assert (run_dir / "report" / "assets" / "frame-00000001.jpg").exists()
     assert (run_dir / "report" / "assets" / "frame-00000001.png").exists()

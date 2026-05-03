@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ai.depth_log_map import build_point_cloud, write_point_cloud_json
+from breacheye.runlog import RunLogger
 
 
 def main() -> None:
@@ -24,6 +25,15 @@ def main() -> None:
     depth_dir = run_dir / "rafa" / "depth_raw"
     output_dir = run_dir / "map"
     output_dir.mkdir(parents=True, exist_ok=True)
+    logger = RunLogger("map_builder", log_dir=args.log_dir, run_id=args.run_id)
+    logger.event(
+        "map_builder_start",
+        depth_dir=depth_dir,
+        output_dir=output_dir,
+        interval_s=args.interval_s,
+        stride=args.stride,
+        max_frames=args.max_frames,
+    )
     last_points = 0
 
     while True:
@@ -36,6 +46,12 @@ def main() -> None:
                     json.dumps({"run_id": args.run_id, **stats}, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
+                logger.event(
+                    "map_updated",
+                    source="depth_anything_relative_live",
+                    stats=stats,
+                    point_cloud_json=output_dir / "point-cloud.json",
+                )
                 print(f"map points={stats['points']} frames={stats['frames_used']}", flush=True)
                 last_points = stats["points"]
         except FileNotFoundError:
@@ -43,6 +59,7 @@ def main() -> None:
         except ValueError:
             pass
         except Exception as exc:
+            logger.event("map_builder_warning", error=str(exc))
             print(f"map_builder warning: {exc}", flush=True)
         time.sleep(max(1.0, args.interval_s))
 

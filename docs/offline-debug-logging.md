@@ -9,6 +9,9 @@ By default, each process writes:
 ```text
 logs/<run_id>-rafa.jsonl
 logs/<run_id>-frame_publisher.jsonl
+logs/<run_id>-nav_interpreter.jsonl
+logs/<run_id>-map_builder.jsonl
+logs/<run_id>-monitor.jsonl
 logs/<run_id>-subscriber_<channel>_<port>.jsonl
 logs/<run_id>/<component>/frames/frame-00000000.jpg
 logs/<run_id>/rafa/depth/frame-00000000.png
@@ -48,6 +51,8 @@ Rafa pipeline:
 - frame ids, JPEG byte sizes, and saved received-frame image paths
 - depth visualization PNG paths for each depth output
 - raw `float32` depth `.npy` paths for post-run mapping
+- per-frame pipeline latency: decode, detection, depth, navigation, publish, and total
+- full navigation action, confidence, params, and reasoning before publish
 - decode failures
 - detection/depth/navigation fallbacks
 - every publish event with frame id, action, counts, and health summary
@@ -56,7 +61,26 @@ Frame publisher:
 
 - startup endpoint and cadence
 - every published frame id, dimensions, payload size, and saved sent-frame image path
+- skipped harness warm-up frames with reason, size, and luma stats
 - shutdown
+
+Nav interpreter:
+
+- every received navigation decision with frame id, action, confidence, params, and model reasoning
+- mapped command type, command payload, TTL, safety response status, and safety response reason
+- skipped grounded decisions, low-confidence decisions, mapping failures, and fallback actions
+
+Map builder:
+
+- map-builder startup arguments
+- point-cloud update stats and output artifact path
+- warning events if reconstruction/update fails
+
+Live monitor:
+
+- harness health snapshots: connected, flying, battery, height, raw telemetry, and video readiness
+- sampled `/frame/latest` JPEG snapshots under `logs/<run_id>/monitor/frames/`
+- luma, contrast, and blur metrics for sampled stream frames
 
 Subscriber probe:
 
@@ -116,6 +140,7 @@ After reconnecting, inspect:
 ```bash
 tail -n 100 logs/${BREACHEYE_RUN_ID}-rafa.jsonl
 find logs/${BREACHEYE_RUN_ID} -type f | sort | head
+breacheye report --run-id "$BREACHEYE_RUN_ID" --log-dir logs
 ```
 
 Then create a single bundle to share/debug:
@@ -175,3 +200,11 @@ Terminal 4, optional probes:
 python shared/zmq_test_sub.py --port 5558 --channel navigation --count 20 --run-id "$BREACHEYE_RUN_ID"
 python shared/zmq_test_sub.py --port 5559 --channel health --count 20 --run-id "$BREACHEYE_RUN_ID"
 ```
+
+Terminal 4, preferred live monitor:
+
+```bash
+scripts/watch_live_debug.sh "$BREACHEYE_RUN_ID"
+```
+
+If a separate operator starts the run and the id is unknown, `scripts/watch_live_debug.sh` defaults to `latest`.

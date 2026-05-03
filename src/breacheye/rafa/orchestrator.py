@@ -199,6 +199,8 @@ class RafaPipeline:
         if self._receiver is None:
             raise RuntimeError("pipeline is not started")
         await self._maybe_publish_health()
+        frame_started_at = monotonic()
+        timings: dict[str, float] = {}
         try:
             frame_meta = await self._receiver.recv(timeout_s=self.config.recv_timeout_s)
         except asyncio.TimeoutError:
@@ -214,22 +216,41 @@ class RafaPipeline:
             image_path=frame_path,
         )
         try:
+            stage_started_at = monotonic()
             frame = decode_jpeg_bgr(frame_meta.jpeg_bytes)
+            timings["decode_ms"] = _elapsed_ms(stage_started_at)
         except Exception as exc:
             self.errors.append(f"frame {frame_meta.frame_id}: {exc}")
             self.logger.event("frame_decode_failed", frame_id=frame_meta.frame_id, error=str(exc))
             await self.publish_health()
             return False
 
+        stage_started_at = monotonic()
         detection = await self._safe_detect(frame, frame_meta)
+        timings["detection_ms"] = _elapsed_ms(stage_started_at)
+        stage_started_at = monotonic()
         depth = await self._safe_depth(frame, frame_meta)
+        timings["depth_ms"] = _elapsed_ms(stage_started_at)
         if depth is not None:
             self._log_depth_artifact(depth)
+        stage_started_at = monotonic()
         navigation = await self._safe_navigation(frame, frame_meta, detection, depth)
+        timings["navigation_ms"] = _elapsed_ms(stage_started_at)
+        stage_started_at = monotonic()
         await self._publish("detections", detection)
         if depth is not None:
             await self._publish("depth", depth)
         await self._publish("navigation", navigation)
+        timings["publish_ms"] = _elapsed_ms(stage_started_at)
+        self.logger.event(
+            "frame_pipeline_summary",
+            frame_id=frame_meta.frame_id,
+            total_ms=_elapsed_ms(frame_started_at),
+            depth_available=depth is not None,
+            action=navigation.decision.action,
+            confidence=navigation.decision.confidence,
+            **timings,
+        )
         return True
 
     async def publish_health(self) -> None:
@@ -300,6 +321,15 @@ class RafaPipeline:
             validated = NavigationOutput.model_validate(output.model_dump())
             self._frames["decision"] += 1
             self._recent_actions.append(validated.decision.action)
+            self.logger.event(
+                "navigation_decision_built",
+                frame_id=frame_meta.frame_id,
+                action=validated.decision.action,
+                confidence=validated.decision.confidence,
+                reasoning=validated.decision.reasoning,
+                params=validated.decision.params,
+                exploration_state=validated.decision.exploration_state,
+            )
             return validated
         except (ValidationError, Exception) as exc:
             self.errors.append(f"navigation fallback on frame {frame_meta.frame_id}: {exc}")
@@ -307,6 +337,16 @@ class RafaPipeline:
             fallback = await SafeRuleNavigator().decide(frame, frame_meta, detection, depth)
             self._frames["decision"] += 1
             self._recent_actions.append(fallback.decision.action)
+            self.logger.event(
+                "navigation_decision_built",
+                frame_id=frame_meta.frame_id,
+                action=fallback.decision.action,
+                confidence=fallback.decision.confidence,
+                reasoning=fallback.decision.reasoning,
+                params=fallback.decision.params,
+                exploration_state=fallback.decision.exploration_state,
+                fallback=True,
+            )
             return fallback
 
     async def _maybe_publish_health(self) -> None:
@@ -365,3 +405,7 @@ class RafaPipeline:
             )
         except Exception as exc:
             self.logger.event("depth_image_save_failed", frame_id=depth.frame_id, error=str(exc))
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return int((monotonic() - started_at) * 1000)
