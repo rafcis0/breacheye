@@ -247,7 +247,7 @@ class NavInterpreter:
         health = await self._get_health_payload()
         telemetry = health.get("telemetry", {}) if health else {}
         if telemetry.get("flying") is not True:
-            return None
+            return _GUARD_SKIP
 
         now = monotonic()
         if self._first_airborne_at is None:
