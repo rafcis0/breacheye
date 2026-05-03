@@ -464,7 +464,6 @@
 
 .map3d {
   height: 100%;
-  min-height: 220px;
   display: flex;
   flex-direction: column;
   overflow: hidden;

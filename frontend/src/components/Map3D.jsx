@@ -51,6 +51,7 @@ export default function Map3D() {
   const rootRef = useRef(null)
   const pointsRef = useRef(null)
   const rendererRef = useRef(null)
+  const controlsRef = useRef(null)
   const labelRef = useRef(null)
   const threeRef = useRef(null)
   const [depthSrc, setDepthSrc] = useState(null)
@@ -66,8 +67,12 @@ export default function Map3D() {
     let material
     let grid
     let axes
+    let controls
 
-    import('three').then((THREE) => {
+    Promise.all([
+      import('three'),
+      import('three/examples/jsm/controls/OrbitControls.js'),
+    ]).then(([THREE, { OrbitControls }]) => {
       if (!running) return
       threeRef.current = THREE
 
@@ -82,6 +87,11 @@ export default function Map3D() {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
       rendererRef.current = renderer
       root.appendChild(renderer.domElement)
+
+      controls = new OrbitControls(camera, renderer.domElement)
+      controls.enableDamping = true
+      controls.dampingFactor = 0.05
+      controlsRef.current = controls
 
       grid = new THREE.GridHelper(1.6, 12, 0x2dd4bf, 0x1f2937)
       grid.rotation.x = Math.PI / 2
@@ -113,9 +123,7 @@ export default function Map3D() {
 
       const render = () => {
         if (!running) return
-        if (pointsRef.current) {
-          pointsRef.current.rotation.y += 0.003
-        }
+        controls.update()
         renderer.render(scene, camera)
         requestAnimationFrame(render)
       }
@@ -125,6 +133,7 @@ export default function Map3D() {
     return () => {
       running = false
       ro?.disconnect()
+      controlsRef.current?.dispose()
       renderer?.dispose()
       material?.dispose()
       grid?.geometry.dispose()
@@ -150,11 +159,12 @@ export default function Map3D() {
         pointsRef.current.geometry = next
         prev.dispose()
         if (labelRef.current) {
-          labelRef.current.textContent = `${cloud.source || 'point_cloud'} · ${cloud.points?.length ?? 0} pts`
+          const count = cloud.points?.length ?? 0
+          labelRef.current.textContent = `3D RECON · ${count.toLocaleString()} pts`
         }
       } catch {
         if (labelRef.current) {
-          labelRef.current.textContent = 'waiting for 3D reconstruction'
+          labelRef.current.textContent = '3D RECON · waiting for reconstruction'
         }
       }
     }
@@ -198,7 +208,7 @@ export default function Map3D() {
     <div className="map3d">
       <div className="map3d__header">
         <span className="map3d__title">3D RECON</span>
-        <span ref={labelRef} className="map3d__status">waiting for 3D reconstruction</span>
+        <span ref={labelRef} className="map3d__status">3D RECON · waiting for reconstruction</span>
       </div>
       <div className="map3d__body">
         <div ref={rootRef} className="map3d__viewport" />
