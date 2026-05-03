@@ -185,6 +185,7 @@ class RafaPipeline:
             else:
                 socket.connect(endpoint)
             self._sockets[name] = socket
+        self._sockets["obstacle_alert"] = self._sockets["detections"]
         self._running = True
         await asyncio.sleep(0.05)
         await self.publish_health()
@@ -265,7 +266,7 @@ class RafaPipeline:
         if depth is not None:
             await self._publish("depth", depth)
         if obstacle_alert is not None:
-            await self._publish("detections", obstacle_alert)
+            await self._publish("obstacle_alert", obstacle_alert)
         await self._publish("navigation", navigation)
         timings["publish_ms"] = _elapsed_ms(stage_started_at)
         self.logger.event(

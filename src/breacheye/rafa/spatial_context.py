@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from time import time
+
+logger = logging.getLogger(__name__)
 
 from breacheye.rafa.schemas import (
     DepthOutput,
@@ -180,6 +183,7 @@ def build_obstacle_alert(
             clearance_score=clearance_score,
         )
     except Exception:
+        logger.warning("build_obstacle_alert failed — returning unknown clearance", exc_info=True)
         return ObstacleAlert(
             frame_id=depth.frame_id,
             timestamp=frame_ts if frame_ts is not None else time(),
