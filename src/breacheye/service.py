@@ -16,6 +16,7 @@ from breacheye.adapters.sim import SimAdapter
 from breacheye.adapters.tello import TelloAdapter
 from breacheye.battery_monitor import BatteryMonitor
 from breacheye.bus import AsyncEventBus
+from breacheye.flight_record import FlightDataAccumulator
 from breacheye.models import CommandResult, CommandStatus, CommandType, DroneCommand
 from breacheye.operator import OperatorCommand, OperatorHandler
 from breacheye.safety import SafetyController
@@ -40,6 +41,10 @@ class HarnessRuntime:
         self.fsm = FlightStateMachine(self.adapter, self.bus)
         self.safety = SafetyController(self.adapter, self.bus)
         self.battery_monitor = BatteryMonitor(self.fsm, self.adapter, self.bus)
+        self.accumulator = FlightDataAccumulator(
+            self.bus,
+            run_id=os.environ.get("BREACHEYE_RUN_ID", "unknown"),
+        )
         self.video_pump: TelloVideoPump | None = None
         self._zmq_task: asyncio.Task | None = None
         self._zmq_socket = None
@@ -49,6 +54,7 @@ class HarnessRuntime:
         await self.adapter.connect()
         await self.safety.start()
         await self.battery_monitor.start()
+        await self.accumulator.start()
         if self.mode == "tello" and self.start_video_on_start:
             await self.start_video()
         self._start_zmq_bridge()
@@ -140,6 +146,7 @@ class HarnessRuntime:
             self._zmq_task = None
         self._cleanup_zmq()
         await self.stop_video()
+        await self.accumulator.stop()
         await self.battery_monitor.stop()
         await self.safety.stop()
         await self.adapter.close()
@@ -201,6 +208,10 @@ def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastA
                 ),
             },
         }
+
+    @app.get("/report")
+    async def get_report():
+        return runtime.accumulator.to_building_report().model_dump()
 
     @app.post("/video/start")
     async def start_video():
