@@ -41,6 +41,18 @@ class SimAdapter(DroneAdapter):
         self._require_connected()
         self.commands.append(("hover", (0, 0, 0, 0)))
 
+    def diagnostics(self) -> dict:
+        return {
+            "hover_trim_enabled": False,
+            "hover_trim": {
+                "left_right": 0,
+                "forward_back": 0,
+                "up_down": 0,
+                "yaw": 0,
+            },
+            "rc_axis_order": "left_right, forward_back, up_down, yaw",
+        }
+
     async def rc_control(
         self,
         left_right: int,

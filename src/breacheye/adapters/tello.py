@@ -62,6 +62,18 @@ class TelloAdapter(DroneAdapter):
             self._hover_yaw,
         )
 
+    def diagnostics(self) -> dict:
+        return {
+            "hover_trim_enabled": self._hover_trim_enabled,
+            "hover_trim": {
+                "left_right": self._hover_left_right,
+                "forward_back": self._hover_forward_back,
+                "up_down": self._hover_up_down,
+                "yaw": self._hover_yaw,
+            },
+            "rc_axis_order": "left_right, forward_back, up_down, yaw",
+        }
+
     async def rc_control(
         self,
         left_right: int,

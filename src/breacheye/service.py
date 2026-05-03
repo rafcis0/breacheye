@@ -19,6 +19,7 @@ from breacheye.bus import AsyncEventBus
 from breacheye.models import CommandResult, CommandStatus, CommandType, DroneCommand
 from breacheye.operator import OperatorCommand, OperatorHandler
 from breacheye.safety import SafetyController
+from breacheye.stabilizer import FlightStabilizer, StabilizerConfig
 from breacheye.state_machine import FlightStateMachine
 from breacheye.video import FrameStore, TelloVideoPump
 
@@ -31,7 +32,13 @@ _MAX_POINT_CLOUD_BYTES = 8_000_000
 class HarnessRuntime:
     """Owns the process-local drone resources exposed by the HTTP/WebSocket API."""
 
-    def __init__(self, mode: str, *, start_video_on_start: bool = True) -> None:
+    def __init__(
+        self,
+        mode: str,
+        *,
+        start_video_on_start: bool = True,
+        stabilizer_mode: str | None = None,
+    ) -> None:
         self.mode = mode
         self.start_video_on_start = start_video_on_start
         self.bus = AsyncEventBus()
@@ -39,6 +46,12 @@ class HarnessRuntime:
         self.adapter = make_adapter(mode)
         self.fsm = FlightStateMachine(self.adapter, self.bus)
         self.safety = SafetyController(self.adapter, self.bus)
+        self.stabilizer = FlightStabilizer(
+            self.safety,
+            self.frame_store,
+            self.bus,
+            config=StabilizerConfig.from_env(stabilizer_mode),
+        )
         self.battery_monitor = BatteryMonitor(self.fsm, self.adapter, self.bus)
         self.video_pump: TelloVideoPump | None = None
         self._zmq_task: asyncio.Task | None = None
@@ -48,6 +61,7 @@ class HarnessRuntime:
     async def start(self) -> None:
         await self.adapter.connect()
         await self.safety.start()
+        await self.stabilizer.start()
         await self.battery_monitor.start()
         if self.mode == "tello" and self.start_video_on_start:
             await self.start_video()
@@ -141,6 +155,7 @@ class HarnessRuntime:
         self._cleanup_zmq()
         await self.stop_video()
         await self.battery_monitor.stop()
+        await self.stabilizer.stop()
         await self.safety.stop()
         await self.adapter.close()
 
@@ -153,8 +168,17 @@ def make_adapter(mode: str) -> DroneAdapter:
     raise ValueError(f"unsupported mode {mode!r}")
 
 
-def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastAPI:
-    runtime = HarnessRuntime(mode, start_video_on_start=start_video_on_start)
+def create_app(
+    mode: str = "sim",
+    *,
+    start_video_on_start: bool = True,
+    stabilizer_mode: str | None = None,
+) -> FastAPI:
+    runtime = HarnessRuntime(
+        mode,
+        start_video_on_start=start_video_on_start,
+        stabilizer_mode=stabilizer_mode,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -186,10 +210,13 @@ def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastA
     @app.get("/health")
     async def health():
         telemetry = await runtime.safety.telemetry()
+        diagnostics = getattr(runtime.adapter, "diagnostics", None)
         return {
             "mode": runtime.mode,
             "telemetry": telemetry.model_dump(),
             "accepts_nav": runtime.fsm.accepts_nav(),
+            "adapter": diagnostics() if callable(diagnostics) else {},
+            "stabilizer": runtime.stabilizer.status(),
             "video": {
                 "running": runtime.video_pump is not None,
                 "full_frame_ready": runtime.frame_store.latest_full_jpeg() is not None,
@@ -270,6 +297,7 @@ def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastA
             "drone.paused",
             "drone.resumed",
             "drone.abort",
+            "drone.stabilizer",
         ]
         queues = {topic: await runtime.bus.subscribe(topic) for topic in topics}
         tasks: set[asyncio.Task] = set()

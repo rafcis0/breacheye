@@ -23,6 +23,12 @@ def main() -> None:
         action="store_true",
         help="In tello mode, connect the SDK but wait to start streamon/video until /video/start.",
     )
+    serve.add_argument(
+        "--stabilizer-mode",
+        choices=["off", "log", "assist"],
+        default=None,
+        help="Optional optical-flow hover stabilizer. 'log' records drift only; 'assist' sends tiny corrections.",
+    )
 
     smoke = subparsers.add_parser("smoke", help="Run a conservative connect/takeoff/hover/land sequence.")
     smoke.add_argument("--mode", choices=["sim", "tello"], default="sim")
@@ -119,6 +125,32 @@ def main() -> None:
         metavar="DEG",
         help="Rotation angle in degrees (default: 45)",
     )
+    calibrate.add_argument(
+        "--takeoff-climb-cm",
+        type=int,
+        default=60,
+        metavar="CM",
+        help="Extra climb after takeoff before horizontal tests. Use 0 to disable (default: 60)",
+    )
+    calibrate.add_argument(
+        "--min-battery",
+        type=int,
+        default=30,
+        metavar="PERCENT",
+        help="Minimum battery required before and during calibration (default: 30)",
+    )
+    calibrate.add_argument(
+        "--allow-hover-trim",
+        action="store_true",
+        help="Allow non-neutral harness hover trim during calibration.",
+    )
+    calibrate.add_argument(
+        "--yes",
+        action="store_true",
+        help="Run without pressing Enter before each action.",
+    )
+    calibrate.add_argument("--log-dir", default="logs")
+    calibrate.add_argument("--run-id")
 
     demo = subparsers.add_parser("demo", help="Launch live, recorded, or mock demo stack.")
     demo.add_argument("--mode", choices=["live", "recorded", "mock"], default="live",
@@ -144,7 +176,11 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "serve":
-        app = create_app(mode=args.mode, start_video_on_start=not args.defer_video)
+        app = create_app(
+            mode=args.mode,
+            start_video_on_start=not args.defer_video,
+            stabilizer_mode=args.stabilizer_mode,
+        )
         uvicorn.run(app, host=args.host, port=args.port)
     elif args.command == "smoke":
         raise SystemExit(asyncio.run(_smoke(args.mode)))
@@ -194,12 +230,18 @@ def main() -> None:
             speed=args.speed,
             distance_cm=args.distance_cm,
             degrees=args.degrees,
+            takeoff_climb_cm=args.takeoff_climb_cm,
+            min_battery=args.min_battery,
+            allow_hover_trim=args.allow_hover_trim,
+            confirm_each=not args.yes,
         )
         raise SystemExit(
             run_calibration(
                 base_url=args.harness_url,
                 observe_s=args.observe_s,
                 cfg=cfg,
+                log_dir=args.log_dir,
+                run_id=args.run_id,
             )
         )
     elif args.command == "demo":

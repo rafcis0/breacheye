@@ -86,6 +86,9 @@ class SafetyController:
         await self.bus.publish("drone.command_results", result)
         return result
 
+    def last_command_age_s(self) -> float:
+        return max(0.0, monotonic() - self._last_command_at)
+
     async def telemetry(self) -> DroneTelemetry:
         state = await self.adapter.get_state()
         return DroneTelemetry(

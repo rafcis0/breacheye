@@ -174,6 +174,20 @@ export BREACHEYE_TELLO_HOVER_FORWARD_BACK=6
 export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
 ```
 
+The optical-flow stabilizer is available on the harness for drift diagnosis. Use `log` first; it records frame-to-frame drift estimates and proposed corrections without sending corrective RC commands:
+
+```bash
+breacheye serve --mode tello --host 127.0.0.1 --port 8000 --stabilizer-mode log
+```
+
+If the log-only run shows consistent lateral image drift and telemetry stays stable, `assist` can send tiny left/right correction pulses while the command channel is idle:
+
+```bash
+breacheye serve --mode tello --host 127.0.0.1 --port 8000 --stabilizer-mode assist
+```
+
+Stabilizer events are written to `logs/<run-id>-stabilizer.jsonl` and exposed in `/health` under `stabilizer`. It does not correct forward/back drift yet; it only estimates optical-flow lateral drift and refuses to act while grounded, too low, tilted, missing video, or immediately after a command.
+
 Navigation clearance is tunable. The current value is a normalized relative Depth Anything center-band depth, not true meters: lower values mean closer/blocked, higher values mean farther/clearer. Increase it to be more cautious; decrease it to allow tighter spaces.
 
 ```bash

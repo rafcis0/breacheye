@@ -100,6 +100,29 @@ export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
 
 Trim values are clamped to `-20..20`. Start small.
 
+### Stabilizer
+
+Use this only after the basic command calibration has passed. Start with log-only mode so we can see whether optical flow matches the observed drift:
+
+```bash
+breacheye serve --mode tello --host 127.0.0.1 --port 8000 --stabilizer-mode log
+```
+
+The harness writes `logs/<run-id>-stabilizer.jsonl` with:
+
+- telemetry guard state: connected, flying, height, TOF, pitch, roll
+- optical-flow estimate: median image dx/dy and tracked feature count
+- proposed left/right correction
+- skip reason when it refuses to act
+
+Only after the log-only run makes sense, try assist mode:
+
+```bash
+breacheye serve --mode tello --host 127.0.0.1 --port 8000 --stabilizer-mode assist
+```
+
+Assist mode sends tiny left/right RC pulses only when telemetry is safe, video frames are available, and the command channel has been idle. It does not correct forward/back drift yet.
+
 Simulator rehearsal:
 
 ```bash

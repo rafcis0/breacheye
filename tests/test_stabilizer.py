@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from breacheye.adapters.sim import SimAdapter
+from breacheye.bus import AsyncEventBus
+from breacheye.models import CommandType, DroneCommand
+from breacheye.safety import SafetyController
+from breacheye.stabilizer import (
+    FlightStabilizer,
+    StabilizerConfig,
+    _left_right_correction,
+    estimate_motion,
+)
+from breacheye.video import FrameStore, encode_jpeg
+
+
+def _shifted_frames():
+    import cv2
+    import numpy as np
+
+    base = np.zeros((120, 160, 3), dtype=np.uint8)
+    for x in range(20, 150, 30):
+        for y in range(20, 105, 25):
+            cv2.circle(base, (x, y), 3, (255, 255, 255), -1)
+    matrix = np.float32([[1, 0, 8], [0, 1, 0]])
+    shifted = cv2.warpAffine(base, matrix, (160, 120))
+    return encode_jpeg(base), encode_jpeg(shifted)
+
+
+def test_estimate_motion_detects_lateral_image_shift() -> None:
+    previous, current = _shifted_frames()
+    config = StabilizerConfig(mode="log", min_features=4, flow_threshold_px=1.0)
+
+    estimate = estimate_motion(previous, current, config)
+
+    assert estimate.tracked_features >= 4
+    assert estimate.median_dx_px > 4.0
+    assert _left_right_correction(estimate, config) > 0
+
+
+@pytest.mark.asyncio
+async def test_stabilizer_log_mode_does_not_send_commands(tmp_path) -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    await adapter.takeoff()
+    safety = SafetyController(adapter, AsyncEventBus())
+    store = FrameStore(sample_fps=1000)
+    previous, current = _shifted_frames()
+    store.update_jpeg(previous, width=160, height=120)
+    stabilizer = FlightStabilizer(
+        safety,
+        store,
+        AsyncEventBus(),
+        config=StabilizerConfig(mode="log", min_features=4, flow_threshold_px=1.0),
+        log_dir=str(tmp_path),
+        run_id="stab-log",
+    )
+
+    await stabilizer._tick()
+    store.update_jpeg(current, width=160, height=120)
+    await stabilizer._tick()
+
+    assert not any(command[0] == "rc_control" for command in adapter.commands)
+    assert stabilizer.status()["last_skip_reason"] == "log_only"
+
+
+@pytest.mark.asyncio
+async def test_stabilizer_assist_sends_tiny_correction_when_idle(tmp_path) -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    await adapter.takeoff()
+    safety = SafetyController(adapter, AsyncEventBus())
+    await safety.execute(DroneCommand(type=CommandType.HOVER, issued_by="test"))
+    safety._last_command_at -= 10.0
+    store = FrameStore(sample_fps=1000)
+    previous, current = _shifted_frames()
+    store.update_jpeg(previous, width=160, height=120)
+    stabilizer = FlightStabilizer(
+        safety,
+        store,
+        AsyncEventBus(),
+        config=StabilizerConfig(
+            mode="assist",
+            min_features=4,
+            flow_threshold_px=1.0,
+            idle_after_s=0.0,
+            max_left_right=6,
+            duration_ms=50,
+        ),
+        log_dir=str(tmp_path),
+        run_id="stab-assist",
+    )
+
+    await stabilizer._tick()
+    store.update_jpeg(current, width=160, height=120)
+    await stabilizer._tick()
+    await asyncio.sleep(0)
+
+    rc_commands = [command for command in adapter.commands if command[0] == "rc_control"]
+    assert rc_commands
+    assert 0 < rc_commands[-1][1][0] <= 6
+    assert stabilizer.status()["last_correction"]["left_right"] == rc_commands[-1][1][0]

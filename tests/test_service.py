@@ -11,6 +11,10 @@ def test_health_endpoint_in_sim_mode() -> None:
     body = response.json()
     assert body["mode"] == "sim"
     assert body["telemetry"]["connected"] is True
+    assert body["adapter"]["hover_trim_enabled"] is False
+    assert body["adapter"]["rc_axis_order"] == "left_right, forward_back, up_down, yaw"
+    assert body["stabilizer"]["mode"] == "off"
+    assert body["stabilizer"]["running"] is False
     assert body["video"]["running"] is False
 
 
