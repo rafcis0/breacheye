@@ -66,6 +66,10 @@ class RafaPipeline:
         self._frames = {"detection": 0, "depth": 0, "decision": 0}
         self._recent_actions: list[NavigationAction] = []
         self._min_forward_clearance_m = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45)
+        self._adaptive_threshold: "AdaptiveThreshold | None" = None
+        if os.environ.get("BREACHEYE_NAV_ADAPTIVE_CLEARANCE", "").lower() in ("1", "true", "yes"):
+            from breacheye.rafa.spatial_context import AdaptiveThreshold
+            self._adaptive_threshold = AdaptiveThreshold()
         self._search_tactic = NodeSearchTactic(
             clearance_threshold=self._min_forward_clearance_m,
             scan_degrees=_env_int("BREACHEYE_NAV_SEARCH_SCAN_DEGREES", 20, minimum=5, maximum=90),
@@ -242,6 +246,9 @@ class RafaPipeline:
         timings["depth_ms"] = _elapsed_ms(stage_started_at)
         if depth is not None:
             self._log_depth_artifact(depth)
+        if depth is not None and self._adaptive_threshold is not None:
+            self._min_forward_clearance_m = self._adaptive_threshold.update(depth)
+            self._search_tactic.clearance_threshold = self._min_forward_clearance_m
         stage_started_at = monotonic()
         navigation = await self._safe_navigation(frame, frame_meta, detection, depth)
         timings["navigation_ms"] = _elapsed_ms(stage_started_at)

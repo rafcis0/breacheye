@@ -16,6 +16,147 @@ from breacheye.rafa.schemas import (
 )
 
 
+CLEARANCE_PRESETS: dict[str, float] = {
+    "tight": 0.25,    # Small rooms, tight corridors
+    "normal": 0.45,   # Default — typical indoor spaces
+    "wide": 0.65,     # Open areas, conservative flight
+}
+
+
+def resolve_clearance_threshold(explicit_value: float | None = None) -> float:
+    """Resolve clearance threshold from explicit value, preset, or env var.
+
+    Priority: explicit_value > BREACHEYE_NAV_CLEARANCE_PRESET > BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M > 0.45
+    """
+    if explicit_value is not None:
+        return max(0.0, min(1.0, explicit_value))
+
+    preset = os.environ.get("BREACHEYE_NAV_CLEARANCE_PRESET", "").lower()
+    if preset in CLEARANCE_PRESETS:
+        return CLEARANCE_PRESETS[preset]
+
+    try:
+        value = float(os.environ.get("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45))
+    except (TypeError, ValueError):
+        value = 0.45
+    return max(0.0, min(1.0, value))
+
+
+class AdaptiveThreshold:
+    """Adjusts clearance threshold based on recent depth statistics."""
+
+    def __init__(self, window_size: int = 30, hysteresis: int = 5) -> None:
+        self._window_size = window_size
+        self._hysteresis = hysteresis
+        self._base_threshold = resolve_clearance_threshold()
+        self._current = self._base_threshold
+        self._medians: list[float] = []
+        self._consecutive_agreement: int = 0
+        self._pending_preset: str | None = None
+
+    @property
+    def threshold(self) -> float:
+        return self._current
+
+    def update(self, depth: DepthOutput) -> float:
+        """Feed a depth frame, return current threshold."""
+        import numpy as np
+
+        try:
+            values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+            finite = values[np.isfinite(values)]
+            if finite.size == 0:
+                return self._current
+            median = float(np.median(finite))
+        except Exception:
+            return self._current
+
+        self._medians.append(median)
+        if len(self._medians) > self._window_size:
+            self._medians = self._medians[-self._window_size:]
+
+        # Determine suggested preset based on rolling median
+        rolling_median = sum(self._medians) / len(self._medians)
+        if rolling_median < 0.3:
+            suggested = "tight"
+        elif rolling_median > 0.6:
+            suggested = "wide"
+        else:
+            suggested = "normal"
+
+        # Hysteresis: require N consecutive frames agreeing before switching
+        if suggested == self._pending_preset:
+            self._consecutive_agreement += 1
+        else:
+            self._pending_preset = suggested
+            self._consecutive_agreement = 1
+
+        if self._consecutive_agreement >= self._hysteresis:
+            self._current = CLEARANCE_PRESETS[suggested]
+
+        return self._current
+
+
+def render_depth_zones(depth: DepthOutput, threshold: float = 0.45) -> bytes:
+    """Render depth frame with colored zone overlay. Returns JPEG bytes."""
+    import cv2
+    import numpy as np
+
+    values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+    height, width = values.shape
+
+    # Normalize depth to 0-255 grayscale
+    valid = values[np.isfinite(values)]
+    if valid.size == 0:
+        gray = np.zeros((height, width), dtype=np.uint8)
+    else:
+        normalized = np.clip((values - valid.min()) / max(valid.max() - valid.min(), 1e-6), 0, 1)
+        gray = (normalized * 255).astype(np.uint8)
+
+    # Convert to BGR for overlay
+    viz = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+    # Color overlay per zone
+    margin = 0.1  # yellow band width
+    zones = {
+        "left": (slice(None), slice(0, width // 3)),
+        "center": (slice(None), slice(width // 3, (width * 2) // 3)),
+        "right": (slice(None), slice((width * 2) // 3, width)),
+    }
+
+    for name, (row_slice, col_slice) in zones.items():
+        zone_values = values[row_slice, col_slice]
+        finite = zone_values[np.isfinite(zone_values)]
+        if finite.size == 0:
+            continue
+        score = float(np.nanpercentile(finite, 20))
+
+        # Create overlay color
+        overlay = viz[row_slice, col_slice].copy()
+        if score < threshold:
+            # Red — blocked
+            overlay[:, :, 2] = np.clip(overlay[:, :, 2].astype(int) + 80, 0, 255).astype(np.uint8)
+        elif score < threshold + margin:
+            # Yellow — marginal
+            overlay[:, :, 1] = np.clip(overlay[:, :, 1].astype(int) + 60, 0, 255).astype(np.uint8)
+            overlay[:, :, 2] = np.clip(overlay[:, :, 2].astype(int) + 60, 0, 255).astype(np.uint8)
+        else:
+            # Green — clear
+            overlay[:, :, 1] = np.clip(overlay[:, :, 1].astype(int) + 60, 0, 255).astype(np.uint8)
+        viz[row_slice, col_slice] = overlay
+
+    # Draw zone boundary lines
+    cv2.line(viz, (width // 3, 0), (width // 3, height), (255, 255, 255), 1)
+    cv2.line(viz, ((width * 2) // 3, 0), ((width * 2) // 3, height), (255, 255, 255), 1)
+
+    # Add threshold text
+    cv2.putText(viz, f"threshold: {threshold:.2f}", (10, 25),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+    _, jpeg = cv2.imencode(".jpg", viz, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return jpeg.tobytes()
+
+
 def build_spatial_context(
     *,
     meta: FrameInput,
@@ -116,12 +257,7 @@ def _bbox_relative_position(x1: int, x2: int, width: int | None) -> str:
 
 
 def _resolve_frontier_clearance(value: float | None) -> float:
-    if value is None:
-        try:
-            value = float(os.environ.get("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45))
-        except (TypeError, ValueError):
-            value = 0.45
-    return max(0.0, min(10.0, value))
+    return resolve_clearance_threshold(value)
 
 
 def compute_obstacle_alert(
