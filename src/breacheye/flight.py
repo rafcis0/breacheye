@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -434,12 +435,23 @@ def _post_shutdown_land(base_url: str) -> None:
         time.sleep(0.25)
 
 
+def _post_shutdown_stop_video(base_url: str) -> None:
+    import httpx
+
+    try:
+        response = httpx.post(f"{base_url}/video/stop", timeout=5.0)
+        print(f"[flight] shutdown video stop response: {response.text}", flush=True)
+    except Exception as exc:
+        print(f"[flight] shutdown video stop failed: {exc}", flush=True)
+
+
 def _stop_flight_processes(procs: Sequence[tuple[str, subprocess.Popen]], base_url: str) -> None:
     non_harness = [(name, proc) for name, proc in procs if name != "harness"]
     harness = [(name, proc) for name, proc in procs if name == "harness"]
     _stop_processes(non_harness)
     if harness and harness[0][1].poll() is None:
         _post_shutdown_land(base_url)
+        _post_shutdown_stop_video(base_url)
     _stop_processes(harness)
 
 
@@ -676,16 +688,42 @@ def _stop_processes(procs: Sequence[tuple[str, subprocess.Popen]]) -> None:
         if proc.poll() is not None:
             continue
         print(f"[flight] stopping {name}", flush=True)
-        proc.terminate()
+        _signal_process_group(proc, signal.SIGTERM)
     deadline = time.monotonic() + 5.0
+    interrupted = False
     for _name, proc in reversed(procs):
         remaining = max(0.1, deadline - time.monotonic())
         try:
             proc.wait(timeout=remaining)
         except subprocess.TimeoutExpired:
-            proc.terminate()
+            pass
         except KeyboardInterrupt:
-            proc.terminate()
-    for _name, proc in reversed(procs):
+            interrupted = True
+            break
+    for name, proc in reversed(procs):
         if proc.poll() is None:
-            proc.kill()
+            if interrupted:
+                print(f"[flight] cleanup interrupted; force stopping {name}", flush=True)
+            else:
+                print(f"[flight] force stopping {name}", flush=True)
+            _signal_process_group(proc, signal.SIGKILL)
+    kill_deadline = time.monotonic() + 2.0
+    for _name, proc in reversed(procs):
+        if proc.poll() is not None:
+            continue
+        try:
+            proc.wait(timeout=max(0.1, kill_deadline - time.monotonic()))
+        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+            pass
+
+
+def _signal_process_group(proc: subprocess.Popen, sig: signal.Signals) -> None:
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        return
+    except Exception:
+        try:
+            proc.send_signal(sig)
+        except ProcessLookupError:
+            return

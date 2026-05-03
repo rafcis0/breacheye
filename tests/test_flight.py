@@ -5,6 +5,7 @@ from breacheye.flight import (
     _harness_health_summary,
     _post_command_checked,
     _post_shutdown_land,
+    _post_shutdown_stop_video,
     _post_takeoff,
     _rafa_log_has_navigation,
     _wait_for_rafa_navigation,
@@ -106,6 +107,23 @@ def test_shutdown_land_posts_hover_then_land(monkeypatch) -> None:
         ("post", "http://harness/commands", "hover", 8.0),
         ("post", "http://harness/commands", "land", 8.0),
     ]
+
+
+def test_shutdown_stop_video_posts_video_stop(monkeypatch) -> None:
+    calls = []
+
+    class FakeResponse:
+        text = '{"stopped":true}'
+
+    def fake_post(url, timeout):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    _post_shutdown_stop_video("http://harness")
+
+    assert calls == [("http://harness/video/stop", 5.0)]
 
 
 def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> None:
