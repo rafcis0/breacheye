@@ -62,14 +62,45 @@ class FlightStateMachine:
         self._bus = bus
         self._state = FlightState.PREFLIGHT
         self._min_battery = 20
+        self._paused = False
 
     @property
     def state(self) -> FlightState:
         return self._state
 
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
     def accepts_nav(self) -> bool:
         """Whether nav decisions from NavInterpreter should be executed."""
-        return self._state in (FlightState.EXPLORING, FlightState.INVESTIGATING)
+        return self._state in (FlightState.EXPLORING, FlightState.INVESTIGATING) and not self._paused
+
+    async def pause(self) -> None:
+        """Pause autonomous navigation. Drone hovers in place."""
+        if self._paused:
+            return
+        self._paused = True
+        if self._state in (FlightState.EXPLORING, FlightState.INVESTIGATING):
+            await self._adapter.hover()
+        await self._bus.publish("drone.paused", {"timestamp": time()})
+
+    async def resume(self) -> None:
+        """Resume autonomous navigation."""
+        if not self._paused:
+            return
+        self._paused = False
+        await self._bus.publish("drone.resumed", {"timestamp": time()})
+
+    async def abort(self) -> None:
+        """Emergency abort — transition to LANDING from any non-terminal state."""
+        if self._state == FlightState.COMPLETE:
+            return
+        await self._bus.publish("drone.abort", {"from_state": str(self._state), "timestamp": time()})
+        try:
+            await self.transition(FlightState.LANDING)
+        except InvalidTransition:
+            pass
 
     async def transition(self, target: FlightState) -> None:
         """Attempt state transition. Raises InvalidTransition on illegal moves."""
