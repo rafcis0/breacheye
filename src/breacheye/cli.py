@@ -57,6 +57,17 @@ def main() -> None:
     fly.add_argument("--auto-takeoff", action="store_true", help="Issue takeoff once the loop is running.")
     fly.add_argument("--duration-s", type=float, help="Stop the launched loop after this many seconds.")
 
+    demo = subparsers.add_parser("demo", help="Launch demo with auto-fallback (live -> recorded -> mock).")
+    demo.add_argument("--mode", choices=["live", "recorded", "mock"], default="live",
+                      help="Demo mode (default: live, auto-degrades if needed)")
+    demo.add_argument("--host", default="127.0.0.1")
+    demo.add_argument("--port", type=int, default=8000)
+    demo.add_argument("--fps", type=float, default=5.0)
+    demo.add_argument("--video", help="Video file for recorded mode (default: demo/sample.mp4)")
+    demo.add_argument("--log-dir", default="logs")
+    demo.add_argument("--run-id")
+    demo.add_argument("--duration-s", type=float, help="Stop demo after N seconds.")
+
     args = parser.parse_args()
     if args.command == "serve":
         app = create_app(mode=args.mode)
@@ -87,6 +98,17 @@ def main() -> None:
                 duration_s=args.duration_s,
             )
         )
+    elif args.command == "demo":
+        raise SystemExit(_demo(
+            mode=args.mode,
+            host=args.host,
+            port=args.port,
+            fps=args.fps,
+            video=args.video,
+            log_dir=args.log_dir,
+            run_id=args.run_id,
+            duration_s=args.duration_s,
+        ))
 
 
 async def _smoke(mode: str) -> None:
@@ -156,6 +178,31 @@ def _fly(
             auto_takeoff=auto_takeoff,
             duration_s=duration_s,
         )
+    )
+
+
+def _demo(
+    *,
+    mode: str,
+    host: str,
+    port: int,
+    fps: float,
+    video: str | None,
+    log_dir: str,
+    run_id: str | None,
+    duration_s: float | None,
+) -> int:
+    from breacheye.flight import run_demo
+
+    return run_demo(
+        mode=mode,
+        host=host,
+        port=port,
+        fps=fps,
+        video_path=video,
+        log_dir=log_dir,
+        run_id=run_id,
+        duration_s=duration_s,
     )
 
 
