@@ -18,7 +18,7 @@ function StatusItem({ label, value, valueStyle }) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className="font-ui text-[11px] uppercase tracking-[0.12em]"
+        className="font-sans text-[10px] uppercase tracking-[0.12em]"
         style={{ color: 'var(--color-text-subtle)' }}
       >
         {label}
@@ -37,14 +37,14 @@ function StatusDotItem({ label, dotColor, text, textColor }) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className="font-ui text-[11px] uppercase tracking-[0.12em]"
+        className="font-sans text-[10px] uppercase tracking-[0.12em]"
         style={{ color: 'var(--color-text-subtle)' }}
       >
         {label}
       </span>
       <span
         className="inline-block rounded-full flex-shrink-0"
-        style={{ width: '7px', height: '7px', background: dotColor }}
+        style={{ width: '6px', height: '6px', background: dotColor }}
       />
       <span
         className="font-mono text-[11px]"
