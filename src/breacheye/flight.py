@@ -36,22 +36,16 @@ class ProcessSpec:
 
 def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
     source = _resolve_frame_source(config)
-    specs = [
-        ProcessSpec(
-            "harness",
-            [
-                sys.executable,
-                "-m",
-                "breacheye.cli",
-                "serve",
-                "--mode",
-                config.mode,
-                "--host",
-                config.host,
-                "--port",
-                str(config.port),
-            ],
+    harness = ProcessSpec(
+        "harness",
+        _harness_argv(
+            config.mode,
+            config.host,
+            config.port,
+            defer_video=config.mode == "tello" and config.auto_takeoff,
         ),
+    )
+    background = [
         ProcessSpec(
             "rafa",
             [
@@ -104,7 +98,9 @@ def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
             ],
         ),
     ]
-    return specs
+    if config.mode == "tello" and config.auto_takeoff:
+        return [*background, harness]
+    return [harness, *background]
 
 
 def run_flight(config: FlightLaunchConfig) -> int:
@@ -143,8 +139,11 @@ def run_flight(config: FlightLaunchConfig) -> int:
                 time.sleep(0.5)
 
         if config.auto_takeoff:
-            _wait_for_rafa_navigation(config.log_dir, run_id, prefix="[flight]")
+            if config.mode == "tello":
+                _wait_for_takeoff_preflight(config.base_url, prefix="[flight]")
             _post_takeoff(config.base_url, climb_cm=config.takeoff_climb_cm)
+            if config.mode == "tello":
+                _start_harness_video(config.base_url, prefix="[flight]")
 
         deadline = time.monotonic() + config.duration_s if config.duration_s else None
         while True:
@@ -185,6 +184,24 @@ def _frame_source_args(source: str, config: FlightLaunchConfig) -> list[str]:
 
 def _run_id_args(run_id: str | None) -> list[str]:
     return ["--run-id", run_id] if run_id else []
+
+
+def _harness_argv(mode: str, host: str, port: int, *, defer_video: bool = False) -> list[str]:
+    argv = [
+        sys.executable,
+        "-m",
+        "breacheye.cli",
+        "serve",
+        "--mode",
+        mode,
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if defer_video:
+        argv.append("--defer-video")
+    return argv
 
 
 def _repo_root() -> Path:
@@ -238,8 +255,46 @@ def _wait_for_harness(base_url: str, timeout_s: float = 20.0) -> None:
     raise RuntimeError(f"harness did not become ready at {base_url}: {last_error}")
 
 
-def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
+def _wait_for_takeoff_preflight(
+    base_url: str,
+    *,
+    prefix: str,
+    timeout_s: float = 8.0,
+    min_battery: int | None = None,
+) -> None:
     import httpx
+
+    min_battery = _env_int("BREACHEYE_TELLO_MIN_TAKEOFF_BATTERY", min_battery or 25, minimum=1, maximum=100)
+    deadline = time.monotonic() + timeout_s
+    last_payload: dict | None = None
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.get(f"{base_url}/health", timeout=1.0)
+            if response.status_code == 200:
+                last_payload = response.json()
+                telemetry = last_payload.get("telemetry", {})
+                battery = telemetry.get("battery")
+                connected = telemetry.get("connected")
+                if connected is True and battery is not None:
+                    print(f"{prefix} takeoff preflight: {_health_summary_from_telemetry(telemetry)}", flush=True)
+                    if battery < min_battery:
+                        raise RuntimeError(
+                            f"refusing auto-takeoff: battery {battery}% is below {min_battery}% minimum"
+                        )
+                    return
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+        time.sleep(0.25)
+    summary = _health_summary_from_telemetry((last_payload or {}).get("telemetry", {}))
+    raise RuntimeError(f"refusing auto-takeoff: telemetry was not ready ({summary})")
+
+
+def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
+    if _wait_for_flying(base_url, timeout_s=0.1):
+        print("[flight] drone already reports flying; skipping takeoff command", flush=True)
+        return
 
     _post_command_checked(
         base_url,
@@ -273,6 +328,14 @@ def _post_takeoff(base_url: str, climb_cm: int = 100) -> None:
         )
         remaining_cm -= pulse_cm
         time.sleep(0.15)
+
+
+def _start_harness_video(base_url: str, *, prefix: str) -> None:
+    import httpx
+
+    response = httpx.post(f"{base_url}/video/start", timeout=10.0)
+    response.raise_for_status()
+    print(f"{prefix} video start response: {response.text}", flush=True)
 
 
 def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
@@ -312,12 +375,22 @@ def _harness_health_summary(base_url: str) -> str | None:
     except Exception:
         return None
 
+    return _health_summary_from_telemetry(telemetry)
+
+
+def _health_summary_from_telemetry(telemetry: dict) -> str:
+    raw = telemetry.get("raw") or {}
     fields = {
         "connected": telemetry.get("connected"),
         "flying": telemetry.get("flying"),
         "battery": telemetry.get("battery"),
         "height_cm": telemetry.get("height_cm"),
         "flight_time_s": telemetry.get("flight_time_s"),
+        "tof": raw.get("tof"),
+        "templ": raw.get("templ"),
+        "temph": raw.get("temph"),
+        "pitch": raw.get("pitch"),
+        "roll": raw.get("roll"),
     }
     return ", ".join(f"{key}={value}" for key, value in fields.items())
 
@@ -378,18 +451,19 @@ def build_demo_specs(
     video_path: str | None = None,
     log_dir: str = "logs",
     run_id: str | None = None,
+    defer_video: bool = False,
 ) -> list[ProcessSpec]:
     base_url = f"http://{host}:{port}"
     root = _repo_root()
     specs: list[ProcessSpec] = []
 
-    # Harness is always first
     harness_mode = "tello" if mode == "live" else "sim"
-    specs.append(ProcessSpec(
+    harness = ProcessSpec(
         "harness",
-        [sys.executable, "-m", "breacheye.cli", "serve",
-         "--mode", harness_mode, "--host", host, "--port", str(port)],
-    ))
+        _harness_argv(harness_mode, host, port, defer_video=mode == "live" and defer_video),
+    )
+    if not (mode == "live" and defer_video):
+        specs.append(harness)
 
     if mode == "live":
         specs.append(ProcessSpec(
@@ -457,6 +531,8 @@ def build_demo_specs(
             [sys.executable, str(root / "integration" / "map_builder.py"),
              "--log-dir", log_dir, *_run_id_args(run_id)],
         ))
+    if mode == "live" and defer_video:
+        specs.append(harness)
 
     return specs
 
@@ -489,7 +565,17 @@ def run_demo(
     if resolved_mode == "live":
         _apply_local_model_defaults(os.environ, "models")
 
-    specs = build_demo_specs(resolved_mode, host, port, fps, video_path, log_dir, run_id)
+    defer_video = resolved_mode == "live" and auto_takeoff
+    specs = build_demo_specs(
+        resolved_mode,
+        host,
+        port,
+        fps,
+        video_path,
+        log_dir,
+        run_id,
+        defer_video=defer_video,
+    )
     procs: list[tuple[str, subprocess.Popen]] = []
 
     try:
@@ -504,8 +590,9 @@ def run_demo(
                 time.sleep(0.5)
 
         if resolved_mode == "live" and auto_takeoff:
-            _wait_for_rafa_navigation(log_dir, run_id, prefix="[demo]")
+            _wait_for_takeoff_preflight(base_url, prefix="[demo]")
             _post_takeoff(base_url, climb_cm=takeoff_climb_cm)
+            _start_harness_video(base_url, prefix="[demo]")
 
         print("\n[demo] all components running — Ctrl+C to stop\n", flush=True)
 
@@ -531,10 +618,6 @@ def run_demo(
 
 
 def _resolve_demo_mode(mode: str, video_path: str | None) -> str:
-    if mode == "live":
-        if not _check_tello_connection():
-            print("[demo] WARNING: Tello not available — falling back to recorded mode", flush=True)
-            mode = "recorded"
     if mode == "recorded":
         vpath = video_path or str(_repo_root() / "demo" / "sample.mp4")
         if not Path(vpath).exists():
@@ -578,6 +661,14 @@ def _check_tello_connection(timeout: float = 5.0) -> bool:
         return result.returncode == 0 and "ok" in result.stdout
     except (subprocess.TimeoutExpired, Exception):
         return False
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, default))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
 
 
 def _stop_processes(procs: Sequence[tuple[str, subprocess.Popen]]) -> None:

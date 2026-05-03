@@ -18,6 +18,11 @@ def main() -> None:
     serve.add_argument("--mode", choices=["sim", "dry_run", "tello"], default="sim")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--defer-video",
+        action="store_true",
+        help="In tello mode, connect the SDK but wait to start streamon/video until /video/start.",
+    )
 
     smoke = subparsers.add_parser("smoke", help="Run a conservative connect/takeoff/hover/land sequence.")
     smoke.add_argument("--mode", choices=["sim", "tello"], default="sim")
@@ -63,9 +68,9 @@ def main() -> None:
     )
     fly.add_argument("--duration-s", type=float, help="Stop the launched loop after this many seconds.")
 
-    demo = subparsers.add_parser("demo", help="Launch demo with auto-fallback (live -> recorded -> mock).")
+    demo = subparsers.add_parser("demo", help="Launch live, recorded, or mock demo stack.")
     demo.add_argument("--mode", choices=["live", "recorded", "mock"], default="live",
-                      help="Demo mode (default: live, auto-degrades if needed)")
+                      help="Demo mode (default: live)")
     demo.add_argument("--host", default="127.0.0.1")
     demo.add_argument("--port", type=int, default=8000)
     demo.add_argument("--fps", type=float, default=5.0)
@@ -87,7 +92,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "serve":
-        app = create_app(mode=args.mode)
+        app = create_app(mode=args.mode, start_video_on_start=not args.defer_video)
         uvicorn.run(app, host=args.host, port=args.port)
     elif args.command == "smoke":
         raise SystemExit(asyncio.run(_smoke(args.mode)))
@@ -132,7 +137,7 @@ def main() -> None:
 
 
 async def _smoke(mode: str) -> int:
-    runtime = HarnessRuntime(mode)
+    runtime = HarnessRuntime(mode, start_video_on_start=mode != "tello")
     await runtime.start()
     try:
         telemetry = await runtime.safety.telemetry()
@@ -145,6 +150,8 @@ async def _smoke(mode: str) -> int:
             telemetry = await runtime.safety.telemetry()
             print({"event": "takeoff_failed_telemetry", "telemetry": telemetry.model_dump()})
             return 1
+        if mode == "tello":
+            await runtime.start_video()
 
         for command in [
             DroneCommand(

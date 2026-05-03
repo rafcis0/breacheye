@@ -42,6 +42,32 @@ async def test_rc_control_is_clamped_and_returns_to_hover() -> None:
 
 
 @pytest.mark.asyncio
+async def test_takeoff_refuses_low_battery() -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    adapter.state.battery = 10
+    controller = SafetyController(adapter, AsyncEventBus())
+
+    result = await controller.execute(DroneCommand(type=CommandType.TAKEOFF, issued_by="test"))
+
+    assert result.status == CommandStatus.FAILED
+    assert "battery 10%" in (result.reason or "")
+    assert ("takeoff", ()) not in adapter.commands
+
+
+@pytest.mark.asyncio
+async def test_land_noops_when_already_grounded() -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    controller = SafetyController(adapter, AsyncEventBus())
+
+    result = await controller.execute(DroneCommand(type=CommandType.LAND, issued_by="test"))
+
+    assert result.status == CommandStatus.EXECUTED
+    assert ("land", ()) not in adapter.commands
+
+
+@pytest.mark.asyncio
 async def test_rc_control_rejects_duration_longer_than_ttl() -> None:
     adapter = SimAdapter()
     await adapter.connect()

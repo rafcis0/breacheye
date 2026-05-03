@@ -136,7 +136,7 @@ Connect the Mac to the `Tello-XXXXXX` Wi-Fi network first. Use a second network 
 
 ## One-Command Flight Loop
 
-Use `breacheye demo` for table/demo-screen fallback mode. It can run live, recorded, or mock components and auto-degrades if Tello/video assets are unavailable:
+Use `breacheye demo` for live, recorded, or mock runs:
 
 ```bash
 breacheye demo --mode live --fps 5
@@ -144,7 +144,7 @@ breacheye demo --mode recorded --video demo/sample.mp4 --duration-s 20
 breacheye demo --mode mock --duration-s 20
 ```
 
-`demo --mode live` auto-takes off by default. Use `--no-auto-takeoff` to start the live stack without lifting off.
+`demo --mode live` auto-takes off by default. It starts Rafa, the frame publisher, the nav bridge, and the map builder first; then it starts the Tello harness with video deferred, checks takeoff telemetry, takes off, climbs, starts video, and lets navigation commands flow with no operator prompt. Use `--no-auto-takeoff` to start the live stack without lifting off.
 
 Run the full loop in simulator mode first:
 
@@ -173,7 +173,7 @@ export BREACHEYE_TELLO_HOVER_FORWARD_BACK=6
 export BREACHEYE_TELLO_HOVER_LEFT_RIGHT=-4
 ```
 
-The launcher writes a preflight snapshot, starts the safety harness, starts Rafa, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest`.
+The launcher writes a preflight snapshot, starts Rafa/background processes before auto-takeoff, defers Tello video until the aircraft is airborne, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest` and waits until frames are available.
 
 ## Full-Flow Checklist
 
@@ -191,7 +191,7 @@ Ready on `main`:
 - [x] Spatial navigation context schema and `navigation_context_built` logs.
 - [x] One-command simulator loop: `breacheye fly --mode sim --rafa-mode stub --duration-s 20`.
 - [x] One-command Tello loop: `breacheye fly --mode tello --rafa-mode models --fps 5`.
-- [x] Demo launcher: `breacheye demo --mode live|recorded|mock` with live-to-recorded-to-mock fallback.
+- [x] Demo launcher: `breacheye demo --mode live|recorded|mock`.
 - [x] Live demo auto-takeoff with `--no-auto-takeoff` escape hatch.
 - [x] Harness-owned frame source, so only the harness owns the Tello connection.
 - [x] Nav bridge from Rafa navigation decisions to `/commands`.
@@ -199,7 +199,7 @@ Ready on `main`:
 
 Partially ready:
 
-- [ ] Real Tello flight has not been hardware-smoked in this repo session. First run should be `breacheye smoke --mode tello`.
+- [ ] Tello hardware currently accepts SDK mode/video but has returned `takeoff: error`; next smoke should use the telemetry-enriched `breacheye smoke --mode tello` path.
 - [ ] Model-mode readiness depends on local env vars and weights: `BREACHEYE_QWEN_MODEL`, `BREACHEYE_QWEN_MMPROJ`, `BREACHEYE_QWEN_SERVER_URL`, and `BREACHEYE_DEPTH_ANYTHING_PATH`.
 - [ ] Qwen can be run through a warm `llama-server`, but model-mode should be smoke-tested again after any network/interface switch.
 - [ ] VGGT-MPS is not wired yet. Current spatial context is `stub_from_current_frame`.
@@ -210,8 +210,8 @@ Still missing:
 - [ ] Hardware smoke on Tello Wi-Fi: connect, telemetry, video, takeoff, hover, land.
 - [ ] Run `breacheye rafa doctor --require-models` with final local model paths.
 - [ ] Run `breacheye fly --mode sim --rafa-mode models --duration-s 20` with Qwen + Depth Anything before touching the drone.
-- [ ] Run the Tello loop without auto takeoff first: `breacheye fly --mode tello --rafa-mode models --fps 5`; verify `/health`, logs, frame publisher logs, and Rafa nav logs.
-- [ ] Only after that, run `breacheye fly --mode tello --rafa-mode models --fps 2 --auto-takeoff`.
+- [ ] Run `breacheye smoke --mode tello`; verify preflight telemetry, battery, height, TOF, and temperature fields before autonomous launch.
+- [ ] Run `breacheye demo --mode live --fps 2` for the one-command autonomous path.
 - [ ] Add VGGT-MPS runner once the download completes.
 - [ ] Convert VGGT output into real `SpatialNavigationContext`: pose, looking direction, visited regions, frontiers, known objects.
 - [ ] Feed real spatial context into the Qwen prompt. It is logged now, but not yet injected into the navigator prompt.
@@ -222,6 +222,8 @@ Still missing:
 - `GET /health`: adapter, telemetry, and video status.
 - `POST /commands`: submit structured commands only.
 - `GET /frame/latest`: latest sampled JPEG frame.
+- `POST /video/start`: start deferred Tello video after takeoff.
+- `POST /video/stop`: stop video while keeping the harness alive.
 - `GET /video.mjpeg`: MJPEG stream for frontend/human viewing.
 - `WS /events`: telemetry, command results, and sampled-frame metadata.
 

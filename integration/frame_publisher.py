@@ -164,7 +164,11 @@ def harness_frames(frame_url: str, timeout_s: float = 2.0):
 
     with httpx.Client(timeout=timeout_s) as client:
         while True:
-            response = client.get(frame_url)
+            try:
+                response = client.get(frame_url)
+            except httpx.HTTPError:
+                time.sleep(0.1)
+                continue
             if response.status_code == 404:
                 time.sleep(0.1)
                 continue

@@ -20,6 +20,7 @@ class SafetyConfig:
     max_abs_velocity: int = 35
     default_ttl_ms: int = 750
     max_rc_duration_ms: int = 1000
+    min_takeoff_battery: int = 25
     watchdog_interval_s: float = 0.5
     stale_command_s: float = 2.0
     keepalive_interval_s: float = 5.0
@@ -96,9 +97,12 @@ class SafetyController:
 
     async def _execute_locked(self, command: DroneCommand) -> None:
         if command.type == CommandType.TAKEOFF:
+            await self._preflight_takeoff()
             await self.adapter.takeoff()
             return
         if command.type == CommandType.LAND:
+            if not await self._is_flying():
+                return
             await self.adapter.land()
             return
         if command.type == CommandType.EMERGENCY:
@@ -130,7 +134,21 @@ class SafetyController:
 
     async def _is_flying(self) -> bool:
         state = await self.adapter.get_state()
-        return bool(state.flying)
+        return bool(state.flying or (state.height_cm is not None and state.height_cm > 10))
+
+    async def _preflight_takeoff(self) -> None:
+        state = await self.adapter.get_state()
+        if not state.connected:
+            raise RuntimeError("refusing takeoff: drone is not connected")
+        if state.flying:
+            return
+        if state.battery is None:
+            raise RuntimeError("refusing takeoff: battery telemetry unavailable")
+        if state.battery < self.config.min_takeoff_battery:
+            raise RuntimeError(
+                f"refusing takeoff: battery {state.battery}% is below "
+                f"{self.config.min_takeoff_battery}% minimum"
+            )
 
     def _clamp(self, value: int) -> int:
         limit = self.config.max_abs_velocity

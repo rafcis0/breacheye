@@ -43,6 +43,19 @@ def test_live_mode_specs():
     assert "mock_detections" not in names
 
 
+def test_live_deferred_video_starts_harness_after_background_specs():
+    specs = build_demo_specs("live", run_id="run-1", defer_video=True)
+
+    assert [s.name for s in specs] == [
+        "rafa",
+        "frame_publisher",
+        "nav_interpreter",
+        "map_builder",
+        "harness",
+    ]
+    assert "--defer-video" in specs[-1].argv
+
+
 def test_live_mode_reads_frames_from_harness():
     specs = build_demo_specs("live")
     publisher = [s for s in specs if s.name == "frame_publisher"][0]

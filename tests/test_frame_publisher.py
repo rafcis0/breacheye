@@ -58,3 +58,45 @@ def test_harness_frames_decodes_latest_frame(monkeypatch) -> None:
 
     assert decoded.shape == (6, 8, 3)
     assert decoded.dtype == np.uint8
+
+
+def test_harness_frames_waits_for_harness_connection(monkeypatch):
+    frame = np.zeros((6, 8, 3), dtype=np.uint8)
+    jpeg = encode_jpeg(frame)
+
+    class FakeResponse:
+        status_code = 200
+        content = jpeg
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class FakeClient:
+        calls = 0
+
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def get(self, _url):
+            import httpx
+
+            FakeClient.calls += 1
+            if FakeClient.calls == 1:
+                raise httpx.ConnectError("not ready")
+            return FakeResponse()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    decoded = next(harness_frames("http://harness/frame/latest"))
+
+    assert decoded.shape == (6, 8, 3)
+    assert FakeClient.calls == 2

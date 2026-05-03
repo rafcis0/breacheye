@@ -160,7 +160,9 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         prompt = (
             "You are controlling an indoor drone. Look at the image and return only compact JSON "
             "with keys action, confidence, reasoning. Allowed action values: hover, move_forward, "
-            "rotate_left, rotate_right. If uncertain, choose hover."
+            "rotate_left, rotate_right. Choose move_forward only when the center path is clear. "
+            "Choose rotate_left or rotate_right to scan when the path is unclear or partially blocked. "
+            "Use hover only for immediate obstacles, people too close, invalid image, or unsafe flight."
         )
         completed = subprocess.run(
             [
@@ -199,7 +201,10 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         prompt = (
             "Return only compact JSON with keys action, confidence, reasoning. "
             "Allowed action values: hover, move_forward, rotate_left, rotate_right. "
-            "If uncertain, choose hover. No markdown."
+            "Choose move_forward only when the center path is clear. Choose rotate_left or "
+            "rotate_right to scan when the path is unclear or partially blocked. Use hover "
+            "only for immediate obstacles, people too close, invalid image, or unsafe flight. "
+            "No markdown."
         )
         payload = {
             "model": "gpt-4-vision",
@@ -262,7 +267,9 @@ class SmolVLMNavigator(NavigationAdapter):
         prompt = (
             "You are controlling an indoor drone. Return only compact JSON with keys "
             "action, confidence, reasoning. Allowed actions: hover, move_forward, "
-            "rotate_left, rotate_right. If uncertain, choose hover."
+            "rotate_left, rotate_right. Choose move_forward only when the center path is clear. "
+            "Choose rotate_left or rotate_right to scan when the path is unclear or partially blocked. "
+            "Use hover only for immediate obstacles, people too close, invalid image, or unsafe flight."
         )
         messages = [
             {
@@ -300,7 +307,16 @@ class SmolVLMNavigator(NavigationAdapter):
 
 def _extract_action(text: str) -> str:
     allowed = {"hover", "move_forward", "rotate_left", "rotate_right"}
-    for action in allowed:
+    try:
+        match = re.search(r"\{.*?\}", text, flags=re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            action = str(parsed.get("action", "")).lower()
+            if action in allowed:
+                return action
+    except Exception:
+        pass
+    for action in ("move_forward", "rotate_left", "rotate_right", "hover"):
         if re.search(rf"\b{re.escape(action)}\b", text, flags=re.IGNORECASE):
             return action
     return "hover"

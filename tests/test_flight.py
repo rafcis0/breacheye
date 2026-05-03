@@ -28,6 +28,21 @@ def test_tello_flight_defaults_to_harness_frame_source() -> None:
     assert "--run-id" in by_name["map_builder"]
 
 
+def test_tello_auto_takeoff_starts_background_before_deferred_harness() -> None:
+    specs = build_process_specs(
+        FlightLaunchConfig(mode="tello", rafa_mode="models", run_id="run-1", auto_takeoff=True)
+    )
+
+    assert [spec.name for spec in specs] == [
+        "rafa",
+        "frame_publisher",
+        "nav_interpreter",
+        "map_builder",
+        "harness",
+    ]
+    assert "--defer-video" in specs[-1].argv
+
+
 def test_sim_flight_defaults_to_synthetic_frames() -> None:
     specs = build_process_specs(FlightLaunchConfig(mode="sim"))
     publisher = {spec.name: spec.argv for spec in specs}["frame_publisher"]
@@ -109,23 +124,27 @@ def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> No
         def raise_for_status(self) -> None:
             return None
 
-    def fake_get(url, timeout):
-        calls.append(("get", url, timeout))
-        return FakeResponse({"telemetry": {"flying": True}})
-
     def fake_post(url, json, timeout):
         calls.append(("post", url, json, timeout))
         return FakeResponse({"status": "executed"})
 
-    monkeypatch.setattr("httpx.get", fake_get)
+    flying_checks = {"count": 0}
+
+    def fake_wait_for_flying(_base_url, timeout_s=5.0):
+        calls.append(("wait_for_flying", _base_url, timeout_s))
+        flying_checks["count"] += 1
+        return flying_checks["count"] > 1
+
     monkeypatch.setattr("httpx.post", fake_post)
+    monkeypatch.setattr("breacheye.flight._wait_for_flying", fake_wait_for_flying)
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
 
     _post_takeoff("http://harness", climb_cm=100)
 
-    assert calls[0] == ("post", "http://harness/commands", {"type": "takeoff", "issued_by": "flight_launcher"}, 30.0)
-    assert calls[1] == ("get", "http://harness/health", 1.0)
-    climb_pulses = calls[2:]
+    assert calls[0] == ("wait_for_flying", "http://harness", 0.1)
+    assert calls[1] == ("post", "http://harness/commands", {"type": "takeoff", "issued_by": "flight_launcher"}, 30.0)
+    assert calls[2] == ("wait_for_flying", "http://harness", 5.0)
+    climb_pulses = calls[3:]
     assert len(climb_pulses) == 4
     assert all(call[0] == "post" for call in climb_pulses)
     assert all(call[2]["type"] == "rc_control" for call in climb_pulses)
@@ -175,7 +194,8 @@ def test_harness_health_summary_includes_takeoff_diagnostics(monkeypatch) -> Non
     monkeypatch.setattr("httpx.get", lambda *args, **kwargs: FakeResponse())
 
     assert _harness_health_summary("http://harness") == (
-        "connected=True, flying=False, battery=71, height_cm=0, flight_time_s=0"
+        "connected=True, flying=False, battery=71, height_cm=0, flight_time_s=0, "
+        "tof=None, templ=None, temph=None, pitch=None, roll=None"
     )
 
 

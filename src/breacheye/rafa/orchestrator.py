@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from breacheye.runlog import RunLogger, summarize_payload
 from breacheye.rafa.adapters import (
-    HoverNavigator,
     SafeRuleNavigator,
     StubDepthEstimator,
     StubDetector,
@@ -135,9 +134,9 @@ class RafaPipeline:
                     "model_fallback",
                     model="qwen3_vl",
                     error=f"{exc}; {fallback_exc}",
-                    fallback="hover-navigator",
+                    fallback="safe-rule-navigator",
                 )
-                self.navigator = HoverNavigator()
+                self.navigator = SafeRuleNavigator()
                 self.model_status["qwen3_vl"] = ModelStatus(
                     status="fallback",
                     active=self.navigator.name,
@@ -305,7 +304,7 @@ class RafaPipeline:
         except (ValidationError, Exception) as exc:
             self.errors.append(f"navigation fallback on frame {frame_meta.frame_id}: {exc}")
             self.logger.event("navigation_fallback", frame_id=frame_meta.frame_id, error=str(exc))
-            fallback = await HoverNavigator().decide(frame, frame_meta, detection, depth)
+            fallback = await SafeRuleNavigator().decide(frame, frame_meta, detection, depth)
             self._frames["decision"] += 1
             self._recent_actions.append(fallback.decision.action)
             return fallback

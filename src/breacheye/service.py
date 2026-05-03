@@ -30,8 +30,9 @@ _MAX_POINT_CLOUD_BYTES = 8_000_000
 class HarnessRuntime:
     """Owns the process-local drone resources exposed by the HTTP/WebSocket API."""
 
-    def __init__(self, mode: str) -> None:
+    def __init__(self, mode: str, *, start_video_on_start: bool = True) -> None:
         self.mode = mode
+        self.start_video_on_start = start_video_on_start
         self.bus = AsyncEventBus()
         self.frame_store = FrameStore(sample_fps=1.0)
         self.adapter = make_adapter(mode)
@@ -45,10 +46,24 @@ class HarnessRuntime:
     async def start(self) -> None:
         await self.adapter.connect()
         await self.safety.start()
-        if self.mode == "tello":
+        if self.mode == "tello" and self.start_video_on_start:
+            await self.start_video()
+        self._start_zmq_bridge()
+
+    async def start_video(self) -> bool:
+        if self.mode != "tello":
+            return False
+        if self.video_pump is None:
             self.video_pump = TelloVideoPump(self.adapter, self.frame_store, self.bus)
             await self.video_pump.start()
-        self._start_zmq_bridge()
+        return True
+
+    async def stop_video(self) -> bool:
+        if self.video_pump is None:
+            return False
+        await self.video_pump.stop()
+        self.video_pump = None
+        return True
 
     def _start_zmq_bridge(self) -> None:
         try:
@@ -121,8 +136,7 @@ class HarnessRuntime:
                 pass
             self._zmq_task = None
         self._cleanup_zmq()
-        if self.video_pump is not None:
-            await self.video_pump.stop()
+        await self.stop_video()
         await self.safety.stop()
         await self.adapter.close()
 
@@ -135,8 +149,8 @@ def make_adapter(mode: str) -> DroneAdapter:
     raise ValueError(f"unsupported mode {mode!r}")
 
 
-def create_app(mode: str = "sim") -> FastAPI:
-    runtime = HarnessRuntime(mode)
+def create_app(mode: str = "sim", *, start_video_on_start: bool = True) -> FastAPI:
+    runtime = HarnessRuntime(mode, start_video_on_start=start_video_on_start)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -172,6 +186,7 @@ def create_app(mode: str = "sim") -> FastAPI:
             "mode": runtime.mode,
             "telemetry": telemetry.model_dump(),
             "video": {
+                "running": runtime.video_pump is not None,
                 "full_frame_ready": runtime.frame_store.latest_full_jpeg() is not None,
                 "sampled_frame_ready": runtime.frame_store.latest_sampled_jpeg() is not None,
                 "latest_sample": (
@@ -181,6 +196,16 @@ def create_app(mode: str = "sim") -> FastAPI:
                 ),
             },
         }
+
+    @app.post("/video/start")
+    async def start_video():
+        running = await runtime.start_video()
+        return {"running": running}
+
+    @app.post("/video/stop")
+    async def stop_video():
+        stopped = await runtime.stop_video()
+        return {"stopped": stopped, "running": runtime.video_pump is not None}
 
     @app.post("/commands")
     async def command(command: DroneCommand):

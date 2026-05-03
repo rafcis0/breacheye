@@ -11,6 +11,18 @@ def test_health_endpoint_in_sim_mode() -> None:
     body = response.json()
     assert body["mode"] == "sim"
     assert body["telemetry"]["connected"] is True
+    assert body["video"]["running"] is False
+
+
+def test_video_start_stop_endpoint_in_sim_mode() -> None:
+    with TestClient(create_app(mode="sim")) as client:
+        start = client.post("/video/start")
+        stop = client.post("/video/stop")
+
+    assert start.status_code == 200
+    assert start.json() == {"running": False}
+    assert stop.status_code == 200
+    assert stop.json() == {"stopped": False, "running": False}
 
 
 def test_command_endpoint_executes_takeoff_in_sim_mode() -> None:
