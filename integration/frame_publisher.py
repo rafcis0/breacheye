@@ -20,6 +20,8 @@ def main() -> None:
     parser.add_argument("--frames", type=int, default=0, help="Stop after N frames. 0 means run forever.")
     parser.add_argument("--mock-images", type=Path, help="Directory of image files to loop over.")
     parser.add_argument("--mock-video", type=Path, help="Video file to loop over.")
+    parser.add_argument("--video-start-s", type=float, default=0.0, help="Start reading mock video at this timestamp.")
+    parser.add_argument("--video-stride", type=int, default=1, help="Read every Nth frame from mock video.")
     parser.add_argument("--tello", action="store_true", help="Read live frames from djitellopy.Tello.")
     parser.add_argument("--log-dir", default="logs")
     parser.add_argument("--run-id")
@@ -29,7 +31,7 @@ def main() -> None:
     if args.tello:
         frames = tello_frames()
     elif args.mock_video:
-        frames = video_frames(args.mock_video)
+        frames = video_frames(args.mock_video, start_s=args.video_start_s, stride=args.video_stride)
     elif args.mock_images:
         frames = image_frames(args.mock_images)
     else:
@@ -128,19 +130,26 @@ def image_frames(directory: Path):
         yield frame
 
 
-def video_frames(path: Path):
+def video_frames(path: Path, start_s: float = 0.0, stride: int = 1):
     import cv2
 
+    if stride < 1:
+        raise ValueError("video stride must be >= 1")
     while True:
         capture = cv2.VideoCapture(str(path))
         if not capture.isOpened():
             raise ValueError(f"failed to open video {path}")
+        if start_s > 0:
+            capture.set(cv2.CAP_PROP_POS_MSEC, start_s * 1000)
         try:
+            index = 0
             while True:
                 ok, frame = capture.read()
                 if not ok:
                     break
-                yield frame
+                if index % stride == 0:
+                    yield frame
+                index += 1
         finally:
             capture.release()
 
