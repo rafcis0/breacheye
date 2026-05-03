@@ -7,8 +7,10 @@ from time import time
 logger = logging.getLogger(__name__)
 
 from breacheye.rafa.schemas import (
+    BBox2D,
     DepthOutput,
     DetectionOutput,
+    DoorwayCenteringHint,
     FrameInput,
     LookingAt,
     MapFrontier,
@@ -345,6 +347,85 @@ def _bbox_relative_position(x1: int, x2: int, width: int | None) -> str:
     if center > (width * 2) / 3:
         return "right"
     return "center"
+
+
+def compute_doorway_centering_hints(
+    *,
+    meta: FrameInput,
+    detections: DetectionOutput,
+    depth: DepthOutput | None,
+    threshold: float = 0.15,
+) -> list[DoorwayCenteringHint]:
+    """Return centering hints for T1-01 doorway detections.
+
+    Offset is normalized to the visible frame: -1 is far left, +1 is far right,
+    and 0 is centered. Depth remains the existing relative contract: 0 near,
+    1 far.
+    """
+    if not meta.width:
+        return []
+    hints: list[DoorwayCenteringHint] = []
+    for detection in detections.detections:
+        if detection.category != "T1-01":
+            continue
+        offset = _bbox_center_offset_ratio(detection.bbox_2d, meta.width)
+        centered = abs(offset) <= threshold
+        if centered:
+            action = "hover"
+        elif offset < 0:
+            action = "rotate_left"
+        else:
+            action = "rotate_right"
+        hints.append(
+            DoorwayCenteringHint(
+                frame_id=meta.frame_id,
+                doorway_detection_id=detection.id,
+                offset_ratio=offset,
+                centered=centered,
+                approach_depth=_bbox_depth(depth, detection.bbox_2d, meta.width, meta.height),
+                suggested_action=action,
+                threshold=threshold,
+            )
+        )
+    return hints
+
+
+def _bbox_center_offset_ratio(bbox: BBox2D, width: int) -> float:
+    frame_half = max(width / 2.0, 1.0)
+    doorway_center = (bbox.x1 + bbox.x2) / 2.0
+    return max(-1.0, min(1.0, (doorway_center - frame_half) / frame_half))
+
+
+def _bbox_depth(depth: DepthOutput | None, bbox: BBox2D, frame_width: int, frame_height: int | None) -> float | None:
+    if depth is None or not frame_width or not frame_height:
+        return None
+    try:
+        import numpy as np
+
+        values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+        depth_height, depth_width = values.shape
+        x1 = int(max(0, min(depth_width - 1, bbox.x1 / frame_width * depth_width)))
+        x2 = int(max(0, min(depth_width, bbox.x2 / frame_width * depth_width)))
+        y1 = int(max(0, min(depth_height - 1, bbox.y1 / frame_height * depth_height)))
+        y2 = int(max(0, min(depth_height, bbox.y2 / frame_height * depth_height)))
+        if x2 <= x1 or y2 <= y1:
+            return None
+
+        # Doorframe edges are often close. Sample the inner region so the
+        # approach score better reflects the opening itself.
+        width = x2 - x1
+        height = y2 - y1
+        inner_x1 = x1 + max(0, int(width * 0.25))
+        inner_x2 = x2 - max(0, int(width * 0.25))
+        inner_y1 = y1 + max(0, int(height * 0.25))
+        inner_y2 = y2 - max(0, int(height * 0.15))
+        region = values[inner_y1:max(inner_y1 + 1, inner_y2), inner_x1:max(inner_x1 + 1, inner_x2)]
+        finite = region[np.isfinite(region)]
+        if not finite.size:
+            return None
+        return float(np.nanpercentile(finite, 50))
+    except Exception:
+        return None
 
 
 def _resolve_frontier_clearance(value: float | None) -> float:

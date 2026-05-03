@@ -17,6 +17,7 @@ The repo is set up so Cooper and Rafa can work independently against frozen ZMQ 
 - Flight launcher: `breacheye fly` starts the harness, Rafa, frame publisher, and nav bridge with one command.
 - Real model adapters: Qwen server navigation and Depth Anything V2 depth are wired for local weights. Model files stay ignored under `models/`.
 - Debug logs and reports: every run writes JSONL events plus saved source frames, monitor frame samples, model decisions, command results, depth images, and an HTML decision timeline report.
+- Doorway handling: T1-01 detections now produce centering hints, can trigger a conservative doorway transit override, and feed a room graph for multi-room tracking.
 
 ## Repo Layout
 
@@ -198,6 +199,8 @@ export BREACHEYE_NAV_MAX_HOVER_STREAK=4
 
 When forward is blocked, Rafa marks the current search node heading as blocked, sends a short rotate, and re-assesses the next heading before any forward motion. This node-search tactic is logged as `navigation_search_tactic`; hard blocked-forward replacements are also logged as `navigation_safety_override`.
 
+Doorway transit is keyed off T1-01 detections. Rafa computes `doorway_centering_hint` events from the doorway bbox, centers with short yaw corrections, then runs reduced-speed `doorway_approaching`, `doorway_passing_through`, and `doorway_clearing` decisions before resuming normal exploration. During pass-through, the nav bridge relaxes side-zone depth blocks from the doorframe but still blocks if the center path is extremely close. Transit progress is logged as `doorway_transit_event`, and completed transits create room graph updates on `drone.room_graph`.
+
 The launcher writes a preflight snapshot, starts Rafa/background processes before auto-takeoff, defers Tello video until the aircraft is airborne, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest` and waits until frames are available.
 
 ## Full-Flow Checklist
@@ -215,6 +218,9 @@ Ready on `main`:
 - [x] Model-mode adapters for Qwen server navigation and Depth Anything V2.
 - [x] Offline logs save source frames, Rafa frames, depth `.npy`, depth PNGs, nav context, health, and event JSONL.
 - [x] Spatial navigation context schema and `navigation_context_built` logs.
+- [x] Doorway centering hints for T1-01 detections.
+- [x] Conservative doorway transit sequence with explicit transit states.
+- [x] Multi-room room graph tracking from completed doorway transits.
 - [x] Frontend 3D panel renders the live point cloud plus the latest model depth map from `/map/depth/latest`.
 - [x] One-command simulator loop: `breacheye fly --mode sim --rafa-mode stub --duration-s 20`.
 - [x] One-command Tello loop: `breacheye fly --mode tello --rafa-mode models --fps 5`.

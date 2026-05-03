@@ -7,10 +7,13 @@ from breacheye.rafa.schemas import (
     DepthOutput,
     Detection,
     DetectionOutput,
+    DoorwayCenteringHint,
     FrameInput,
     NavigationDecision,
     NavigationOutput,
     ObstacleAlert,
+    RoomConnection,
+    RoomNode,
 )
 
 
@@ -119,3 +122,23 @@ def test_obstacle_alert_rejects_extra_fields() -> None:
             clearance_score=1.0,
             unknown_field="oops",
         )
+
+
+def test_doorway_hint_and_room_graph_schemas_validate() -> None:
+    hint = DoorwayCenteringHint(
+        frame_id=42,
+        doorway_detection_id="det-042-001",
+        offset_ratio=0.1,
+        centered=True,
+        approach_depth=0.6,
+    )
+    room = RoomNode(id="room-0001", entry_doorway_id=hint.doorway_detection_id)
+    connection = RoomConnection(
+        doorway_detection_id=hint.doorway_detection_id,
+        from_room_id="room-0001",
+        to_room_id="room-0002",
+    )
+
+    assert hint.model_dump(mode="json")["centered"] is True
+    assert room.model_dump(mode="json")["exploration_status"] == "exploring"
+    assert connection.model_dump(mode="json")["doorway_detection_id"] == "det-042-001"

@@ -28,7 +28,14 @@ ExplorationState = Literal[
     "obstacle_avoidance",
     "coverage_complete",
     "low_battery",
+    "doorway_centering",
+    "doorway_approaching",
+    "doorway_passing_through",
+    "doorway_clearing",
+    "doorway_resumed",
+    "doorway_aborted",
 ]
+RoomExplorationStatus = Literal["exploring", "partially_explored", "fully_explored"]
 
 ALLOWED_NAVIGATION_ACTIONS: set[str] = {
     "move_forward",
@@ -83,10 +90,22 @@ class Detection(StrictModel):
     detection_model: str = Field(min_length=1)
 
 
+class DoorwayCenteringHint(StrictModel):
+    frame_id: int = Field(ge=0)
+    doorway_detection_id: str = Field(min_length=1)
+    offset_ratio: float = Field(ge=-1.0, le=1.0)
+    centered: bool
+    approach_depth: float | None = Field(default=None, ge=0.0, le=1.0)
+    suggested_action: Literal["rotate_left", "rotate_right", "hover"] = "hover"
+    threshold: float = Field(default=0.15, ge=0.0, le=1.0)
+    timestamp: float = Field(default_factory=time)
+
+
 class DetectionOutput(StrictModel):
     frame_id: int = Field(ge=0)
     timestamp: float = Field(default_factory=time)
     detections: list[Detection] = Field(default_factory=list)
+    doorway_centering_hints: list[DoorwayCenteringHint] = Field(default_factory=list)
     processing_ms: int = Field(ge=0)
 
 
@@ -116,11 +135,15 @@ class DepthOutput(StrictModel):
 class ObstacleAlert(StrictModel):
     frame_id: int = Field(ge=0)
     timestamp: float = Field(default_factory=time)
-    min_depth: float = Field(ge=0.0, le=1.0)
-    mean_center_depth: float = Field(ge=0.0, le=1.0)
-    obstacle_detected: bool
-    direction_hint: ObstacleDirection
-    clearance_score: float = Field(ge=0.0, le=1.0)
+    min_depth: float = Field(default=1.0, ge=0.0, le=1.0)
+    mean_center_depth: float = Field(default=1.0, ge=0.0, le=1.0)
+    obstacle_detected: bool = False
+    direction_hint: ObstacleDirection = "unknown"
+    clearance_score: float = Field(default=1.0, ge=0.0, le=1.0)
+    nearest_obstacle_m: float | None = Field(default=None, ge=0.0, le=1.0)
+    zones: dict[str, float] = Field(default_factory=dict)
+    blocked: bool = False
+    threshold: float = Field(default=0.45, ge=0.0, le=1.0)
 
 
 class NavigationDecision(StrictModel):
@@ -207,10 +230,16 @@ class HealthOutput(StrictModel):
     timestamp: float = Field(default_factory=time)
 
 
-class ObstacleAlert(StrictModel):
-    frame_id: int = Field(ge=0)
-    timestamp: float = Field(default_factory=time)
-    nearest_obstacle_m: float = Field(ge=0.0, le=1.0)
-    zones: dict[str, float]
-    blocked: bool
-    threshold: float = Field(ge=0.0, le=1.0)
+class RoomNode(StrictModel):
+    id: str = Field(min_length=1)
+    entry_doorway_id: str | None = None
+    pois_found: int = Field(default=0, ge=0)
+    area_visited_count: int = Field(default=0, ge=0)
+    exploration_status: RoomExplorationStatus = "exploring"
+
+
+class RoomConnection(StrictModel):
+    doorway_detection_id: str = Field(min_length=1)
+    from_room_id: str = Field(min_length=1)
+    to_room_id: str = Field(min_length=1)
+    transit_timestamp: float = Field(default_factory=time)

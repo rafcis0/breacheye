@@ -107,3 +107,41 @@ def test_depth_guard_resets_forward_streak():
     result = interp._guard_action(_make_decision("move_forward"))
     assert result == "rotate_right"
     assert interp._forward_streak == 0
+
+
+def test_transit_decision_skips_forward_streak_guard():
+    """Doorway transit pulses should not trip normal anti-forward-streak scan logic."""
+    interp = _make_interpreter()
+    interp._latest_alert = _make_alert(nearest=0.8, blocked=False)
+    interp._max_forward_streak = 1
+    decision = NavigationDecision(
+        action="move_forward",
+        params={"distance_cm": 25, "transit_phase": "passing_through", "relax_depth_guard": 1},
+        confidence=0.8,
+        reasoning="passing through doorway",
+        exploration_state="doorway_passing_through",
+    )
+
+    assert interp._guard_action(decision) == "move_forward"
+    assert interp._guard_action(decision) == "move_forward"
+
+
+def test_transit_relaxed_depth_uses_center_zone_not_side_doorframe():
+    """Close side zones from a doorframe should not block pass-through if center is clear."""
+    interp = _make_interpreter()
+    interp._latest_alert = {
+        "frame_id": 1,
+        "nearest_obstacle_m": 0.05,
+        "zones": {"left": 0.05, "center": 0.7, "right": 0.08},
+        "blocked": True,
+        "threshold": 0.45,
+    }
+    decision = NavigationDecision(
+        action="move_forward",
+        params={"distance_cm": 25, "transit_phase": "passing_through", "relax_depth_guard": 1},
+        confidence=0.8,
+        reasoning="passing through doorway",
+        exploration_state="doorway_passing_through",
+    )
+
+    assert interp._guard_action(decision) == "move_forward"

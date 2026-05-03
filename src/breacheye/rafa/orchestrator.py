@@ -37,7 +37,13 @@ from breacheye.rafa.schemas import (
     Throughput,
 )
 from breacheye.rafa.depth_accumulator import DepthAccumulator
-from breacheye.rafa.spatial_context import build_obstacle_alert, build_spatial_context, summarize_spatial_context
+from breacheye.rafa.spatial_context import (
+    build_obstacle_alert,
+    build_spatial_context,
+    compute_doorway_centering_hints,
+    summarize_spatial_context,
+)
+from breacheye.rafa.transit_tactic import TransitTactic
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,14 @@ class RafaPipeline:
         self._search_tactic = NodeSearchTactic(
             clearance_threshold=self._min_forward_clearance_m,
             scan_degrees=_env_int("BREACHEYE_NAV_SEARCH_SCAN_DEGREES", 20, minimum=5, maximum=90),
+        )
+        self._transit_tactic = TransitTactic(
+            centering_threshold=_env_float("BREACHEYE_DOORWAY_CENTERING_THRESHOLD", 0.15),
+            approach_depth_threshold=_env_float("BREACHEYE_DOORWAY_APPROACH_DEPTH", 0.30),
+            abort_depth_threshold=_env_float("BREACHEYE_DOORWAY_ABORT_DEPTH", 0.16),
+            approach_steps=_env_int("BREACHEYE_DOORWAY_APPROACH_STEPS", 2, minimum=1, maximum=10),
+            pass_steps=_env_int("BREACHEYE_DOORWAY_PASS_STEPS", 3, minimum=1, maximum=20),
+            clearing_steps=_env_int("BREACHEYE_DOORWAY_CLEARING_STEPS", 1, minimum=1, maximum=10),
         )
         self._started_at = monotonic()
         self._last_health_at = 0.0
@@ -266,6 +280,7 @@ class RafaPipeline:
                 mean_center_depth=obstacle_alert.mean_center_depth,
                 clearance_score=obstacle_alert.clearance_score,
             )
+        detection = await self._enrich_doorway_centering(frame_meta, detection, depth)
         stage_started_at = monotonic()
         navigation = await self._safe_navigation(frame, frame_meta, detection, depth)
         timings["navigation_ms"] = _elapsed_ms(stage_started_at)
@@ -345,6 +360,33 @@ class RafaPipeline:
             except Exception:
                 return None
 
+    async def _enrich_doorway_centering(
+        self,
+        frame_meta,
+        detection: DetectionOutput,
+        depth: DepthOutput | None,
+    ) -> DetectionOutput:
+        hints = compute_doorway_centering_hints(
+            meta=frame_meta,
+            detections=detection,
+            depth=depth,
+            threshold=self._transit_tactic.centering_threshold,
+        )
+        if not hints:
+            return detection
+        enriched = DetectionOutput.model_validate(
+            detection.model_copy(update={"doorway_centering_hints": hints}).model_dump(mode="python")
+        )
+        for hint in hints:
+            payload = hint.model_dump(mode="json")
+            self.logger.event("doorway_centering_hint", **payload)
+            if self._bus is not None:
+                try:
+                    await self._bus.publish("drone.doorway_centering_hint", payload)
+                except Exception:
+                    pass
+        return enriched
+
     async def _safe_navigation(self, frame, frame_meta, detection, depth) -> NavigationOutput:
         context = build_spatial_context(
             meta=frame_meta,
@@ -369,6 +411,28 @@ class RafaPipeline:
             context_summary=summarize_spatial_context(context),
             context=context.model_dump(mode="json"),
         )
+        transit = self._transit_tactic.decide(detections=detection, context=context)
+        if transit.event is not None:
+            self.logger.event("doorway_transit_event", **transit.event)
+            if self._bus is not None:
+                await self._publish_transit_event(transit.event)
+        if transit.output is not None:
+            validated = NavigationOutput.model_validate(transit.output.model_dump())
+            self._frames["decision"] += 1
+            self._recent_actions.append(validated.decision.action)
+            if transit.event is not None and transit.event.get("status") == "completed":
+                self._search_tactic.reset_for_new_room()
+            self.logger.event(
+                "navigation_decision_built",
+                frame_id=frame_meta.frame_id,
+                action=validated.decision.action,
+                confidence=validated.decision.confidence,
+                reasoning=validated.decision.reasoning,
+                params=validated.decision.params,
+                exploration_state=validated.decision.exploration_state,
+                transit=True,
+            )
+            return validated
         try:
             output = await self.navigator.decide(frame, frame_meta, detection, depth)
             validated = NavigationOutput.model_validate(output.model_dump())
@@ -426,6 +490,25 @@ class RafaPipeline:
             )
         except Exception as exc:
             self.logger.event("depth_accumulation_failed", frame_id=depth.frame_id, error=str(exc))
+
+    async def _publish_transit_event(self, event: dict) -> None:
+        if self._bus is None:
+            return
+        try:
+            if event.get("status") == "completed":
+                await self._bus.publish(
+                    "drone.exploration_event",
+                    {
+                        "event": "doorway_transit_complete",
+                        "doorway_detection_id": event.get("doorway_detection_id"),
+                        "transit_id": event.get("transit_id"),
+                        "timestamp": event.get("timestamp"),
+                    },
+                )
+            else:
+                await self._bus.publish("drone.exploration_event", {"event": "doorway_transit_update", **event})
+        except Exception:
+            pass
 
     def _apply_navigation_safety_override(
         self,

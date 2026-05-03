@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from breacheye.service import create_app
@@ -44,6 +46,34 @@ def test_command_endpoint_executes_land_in_sim_mode() -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "executed"
+
+
+def test_navigation_event_updates_room_graph() -> None:
+    with TestClient(create_app(mode="sim")) as client:
+        response = client.post(
+            "/events/navigation",
+            json={
+                "frame_id": 12,
+                "timestamp": 123.0,
+                "decision": {
+                    "action": "hover",
+                    "params": {"doorway_detection_id": "door-1", "transit_phase": "resumed"},
+                    "confidence": 0.7,
+                    "reasoning": "done",
+                    "exploration_state": "doorway_resumed",
+                },
+            },
+        )
+        for _ in range(10):
+            health = client.get("/health")
+            if health.json()["exploration"]["room_count"] == 2:
+                break
+            time.sleep(0.01)
+
+    assert response.status_code == 200
+    assert response.json() == {"published": True}
+    assert health.json()["exploration"]["room_count"] == 2
+    assert health.json()["exploration"]["current_room_id"] == "room-0002"
 
 
 def test_latest_frame_returns_404_without_video() -> None:

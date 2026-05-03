@@ -58,6 +58,8 @@ def summarize_payload(payload: Any) -> dict[str, Any]:
             summary[key] = data[key]
     if "detections" in data:
         summary["detections_count"] = len(data["detections"])
+    if "doorway_centering_hints" in data:
+        summary["doorway_hints_count"] = len(data["doorway_centering_hints"])
     if "decision" in data and isinstance(data["decision"], dict):
         summary["action"] = data["decision"].get("action")
         summary["confidence"] = data["decision"].get("confidence")

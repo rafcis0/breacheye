@@ -107,6 +107,9 @@ class NodeSearchTactic:
         self.heading_index = 0
         self.heading_status.clear()
 
+    def reset_for_new_room(self) -> None:
+        self._advance_node()
+
     def _event(
         self,
         reason: str,

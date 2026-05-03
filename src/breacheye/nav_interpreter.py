@@ -30,6 +30,7 @@ class NavInterpreter:
         self._latest_alert: dict | None = None
         self._alert_task: object | None = None
         self._depth_threshold: float = _env_float("BREACHEYE_NAV_MIN_FORWARD_CLEARANCE_M", 0.45, minimum=0.0, maximum=1.0)
+        self._transit_abort_threshold: float = _env_float("BREACHEYE_DOORWAY_ABORT_DEPTH", 0.16, minimum=0.0, maximum=1.0)
         self._socket = None
         self._client = None  # httpx.AsyncClient
         self._poller = None
@@ -146,6 +147,7 @@ class NavInterpreter:
             params=nav.decision.params,
             exploration_state=nav.decision.exploration_state,
         )
+        await self._post_navigation_event(nav.model_dump(mode="json"))
 
         # Step 2: Confidence check
         if nav.decision.confidence < 0.5:
@@ -240,23 +242,42 @@ class NavInterpreter:
         return cmd
 
     def _guard_action(self, decision: NavigationDecision) -> str:
+        transit = _is_transit_decision(decision)
+        relax_depth_guard = transit and _truthy(decision.params.get("relax_depth_guard"))
+
         # Depth guard — blocks forward movement when obstacle detected
         if decision.action == "move_forward" and self._latest_alert is not None:
             alert = self._latest_alert
-            nearest = alert.get("nearest_obstacle_m", 1.0)
-            blocked = alert.get("blocked", False)
-            if blocked or nearest < self._depth_threshold:
+            zones = alert.get("zones") or {}
+            nearest = alert.get("nearest_obstacle_m")
+            if nearest is None:
+                nearest = alert.get("min_depth", 1.0)
+            center_depth = zones.get("center", alert.get("mean_center_depth", nearest))
+            if center_depth is None:
+                center_depth = nearest
+            guard_depth = center_depth if relax_depth_guard else nearest
+            blocked = bool(alert.get("blocked", alert.get("obstacle_detected", False)))
+            threshold = self._transit_abort_threshold if relax_depth_guard else self._depth_threshold
+            hard_blocked = guard_depth < threshold or (blocked and not relax_depth_guard)
+            if hard_blocked:
                 self.logger.event(
-                    "navigation_depth_guard",
+                    "navigation_transit_depth_guard" if relax_depth_guard else "navigation_depth_guard",
                     frame_id=alert.get("frame_id"),
                     requested_action="move_forward",
                     substituted_action="rotate_right",
                     nearest=nearest,
+                    guard_depth=guard_depth,
                     zones=alert.get("zones"),
-                    threshold=self._depth_threshold,
+                    threshold=threshold,
+                    transit=transit,
                 )
                 self._forward_streak = 0
                 return "rotate_right"
+
+        if transit:
+            self._forward_streak = 0
+            self._hover_streak = 0
+            return decision.action
 
         if decision.action == "move_forward":
             self._forward_streak += 1
@@ -430,6 +451,24 @@ class NavInterpreter:
             logger.warning("command failed cmd_id=%s status=%s reason=%s", cmd.command_id, response_status, reason)
             raise RuntimeError(f"command {cmd.command_id} failed: {reason}")
 
+    async def _post_navigation_event(self, payload: dict) -> None:
+        if self._client is None:
+            return
+        event_url = self.command_url.rsplit("/", 1)[0] + "/events/navigation"
+        try:
+            response = await self._client.post(event_url, json=payload)
+            self.logger.event(
+                "navigation_event_posted",
+                frame_id=payload.get("frame_id"),
+                status_code=response.status_code,
+            )
+        except Exception as exc:
+            self.logger.event(
+                "navigation_event_post_failed",
+                frame_id=payload.get("frame_id"),
+                error=str(exc),
+            )
+
 
 def _is_movement_action(action: str) -> bool:
     return action in {
@@ -442,6 +481,21 @@ def _is_movement_action(action: str) -> bool:
         "rotate_left",
         "rotate_right",
     }
+
+
+def _is_transit_decision(decision: NavigationDecision) -> bool:
+    state = str(decision.exploration_state)
+    return state.startswith("doorway_") or "transit_phase" in decision.params
+
+
+def _truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
 
 
 def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:

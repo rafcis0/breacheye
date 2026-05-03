@@ -16,6 +16,7 @@ from breacheye.adapters.sim import SimAdapter
 from breacheye.adapters.tello import TelloAdapter
 from breacheye.battery_monitor import BatteryMonitor
 from breacheye.bus import AsyncEventBus
+from breacheye.exploration_tracker import ExplorationTracker
 from breacheye.flight_record import FlightDataAccumulator
 from breacheye.models import CommandResult, CommandStatus, CommandType, DroneCommand
 from breacheye.operator import OperatorCommand, OperatorHandler
@@ -47,6 +48,7 @@ class HarnessRuntime:
         self.adapter = make_adapter(mode)
         self.fsm = FlightStateMachine(self.adapter, self.bus)
         self.safety = SafetyController(self.adapter, self.bus)
+        self.exploration_tracker = ExplorationTracker(self.fsm, self.bus)
         self.stabilizer = FlightStabilizer(
             self.safety,
             self.frame_store,
@@ -66,6 +68,7 @@ class HarnessRuntime:
     async def start(self) -> None:
         await self.adapter.connect()
         await self.safety.start()
+        await self.exploration_tracker.start()
         await self.stabilizer.start()
         await self.battery_monitor.start()
         await self.accumulator.start()
@@ -163,6 +166,7 @@ class HarnessRuntime:
         await self.accumulator.stop()
         await self.battery_monitor.stop()
         await self.stabilizer.stop()
+        await self.exploration_tracker.stop()
         await self.safety.stop()
         await self.adapter.close()
 
@@ -222,6 +226,7 @@ def create_app(
             "mode": runtime.mode,
             "telemetry": telemetry.model_dump(),
             "accepts_nav": runtime.fsm.accepts_nav(),
+            "exploration": runtime.exploration_tracker.coverage_stats,
             "adapter": diagnostics() if callable(diagnostics) else {},
             "stabilizer": runtime.stabilizer.status(),
             "video": {
@@ -262,6 +267,22 @@ def create_app(
             )
             await runtime.bus.publish("drone.command_results", result)
             return result
+
+    @app.post("/events/navigation")
+    async def navigation_event(payload: dict):
+        await runtime.bus.publish("drone.nav_decision", payload)
+        decision = payload.get("decision", {}) if isinstance(payload, dict) else {}
+        params = decision.get("params", {}) if isinstance(decision, dict) else {}
+        if isinstance(decision, dict) and decision.get("exploration_state") == "doorway_resumed":
+            await runtime.bus.publish(
+                "drone.exploration_event",
+                {
+                    "event": "doorway_transit_complete",
+                    "doorway_detection_id": params.get("doorway_detection_id") if isinstance(params, dict) else None,
+                    "timestamp": payload.get("timestamp"),
+                },
+            )
+        return {"published": True}
 
     @app.post("/operator-command")
     async def operator_command(command: OperatorCommand):
@@ -305,6 +326,9 @@ def create_app(
             "drone.frames.llm",
             "drone.detections",
             "drone.state_change",
+            "drone.doorway_centering_hint",
+            "drone.obstacle_alert",
+            "drone.room_graph",
             "drone.paused",
             "drone.resumed",
             "drone.abort",
