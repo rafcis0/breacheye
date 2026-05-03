@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { WebSocketProvider } from './contexts/WebSocketContext'
 import AppHeader from './components/AppHeader'
+import BottomBar from './components/BottomBar'
 import VideoPanel from './components/VideoPanel'
 import DetectionOverlay from './components/DetectionOverlay'
 import FlightControls from './components/FlightControls'
@@ -50,9 +51,7 @@ export default function App() {
         </main>
 
         {/* Zone C — bottom bar, 32px fixed */}
-        <footer className="h-8 flex-shrink-0 app__bottom-bar">
-          <span className="app__bottom-placeholder">ZONE C · STATUS BAR</span>
-        </footer>
+        <BottomBar />
 
       </div>
     </WebSocketProvider>
