@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-
-const WS_URL = 'ws://127.0.0.1:8000/events'
+import { useWebSocket } from '../contexts/WebSocketContext'
 
 const SRC_W = 960
 const SRC_H = 720
@@ -55,10 +54,10 @@ export default function TacticalMap() {
   const hoveredRef = useRef(null)
   const dirtyRef = useRef(true)
   const rafRef = useRef(null)
-  const wsRef = useRef(null)
-  const backoffRef = useRef(1000)
-  const reconnectRef = useRef(null)
   const prevTelemetryRef = useRef(null)
+
+  const { data: detectionsData } = useWebSocket('drone.detections')
+  const { data: telemetryData } = useWebSocket('drone.telemetry')
 
   const render = useCallback(() => {
     rafRef.current = requestAnimationFrame(render)
@@ -224,100 +223,61 @@ export default function TacticalMap() {
     }
   }, [])
 
-  // WebSocket
+  // Handle detections from shared WebSocket context
   useEffect(() => {
-    let ws
+    const msg = detectionsData
+    if (!Array.isArray(msg?.detections)) return
 
-    function connect() {
-      ws = new WebSocket(WS_URL)
-      wsRef.current = ws
+    for (const det of msg.detections) {
+      const { id, category, label, confidence, bbox_2d, threat_level } = det
+      if (!bbox_2d) continue
 
-      ws.onopen = () => {
-        backoffRef.current = 1000
-      }
+      const cx = ((bbox_2d.x1 + bbox_2d.x2) / 2) / SRC_W
+      const cy = ((bbox_2d.y1 + bbox_2d.y2) / 2) / SRC_H
 
-      ws.onmessage = (event) => {
-        try {
-          const envelope = JSON.parse(event.data)
+      const existing = markersRef.current.findIndex(
+        (m) => m.category === category &&
+          Math.hypot(cx - m.x, cy - m.y) < DEDUP_THRESHOLD
+      )
 
-          if (envelope.topic === 'drone.detections') {
-            const msg = envelope.message
-            if (!Array.isArray(msg?.detections)) return
+      const marker = { id, x: cx, y: cy, category, label, confidence, threat_level }
 
-            for (const det of msg.detections) {
-              const { id, category, label, confidence, bbox_2d, threat_level } = det
-              if (!bbox_2d) continue
-
-              const cx = ((bbox_2d.x1 + bbox_2d.x2) / 2) / SRC_W
-              const cy = ((bbox_2d.y1 + bbox_2d.y2) / 2) / SRC_H
-
-              const existing = markersRef.current.findIndex(
-                (m) => m.category === category &&
-                  Math.hypot(cx - m.x, cy - m.y) < DEDUP_THRESHOLD
-              )
-
-              const marker = { id, x: cx, y: cy, category, label, confidence, threat_level }
-
-              if (existing >= 0) {
-                markersRef.current[existing] = marker
-              } else {
-                markersRef.current.push(marker)
-                if (markersRef.current.length > MAX_MARKERS) {
-                  markersRef.current.shift()
-                }
-              }
-            }
-
-            dirtyRef.current = true
-          }
-
-          if (envelope.topic === 'drone.telemetry') {
-            const msg = envelope.message
-            if (!msg) return
-
-            const prev = prevTelemetryRef.current
-            prevTelemetryRef.current = msg
-
-            // Use vx/vy if present, otherwise accumulate from speed + direction hints,
-            // otherwise fall back to null (pulsing center dot)
-            if (msg.x_cm !== undefined && msg.y_cm !== undefined) {
-              droneRef.current = {
-                x: Math.max(0, Math.min(1, msg.x_cm / SRC_W)),
-                y: Math.max(0, Math.min(1, msg.y_cm / SRC_H)),
-              }
-            } else if (prev && msg.vx !== undefined && msg.vy !== undefined) {
-              const cur = droneRef.current ?? { x: 0.5, y: 0.5 }
-              droneRef.current = {
-                x: Math.max(0, Math.min(1, cur.x + msg.vx * 0.01)),
-                y: Math.max(0, Math.min(1, cur.y + msg.vy * 0.01)),
-              }
-            }
-
-            dirtyRef.current = true
-          }
-        } catch {
-          // malformed — skip
+      if (existing >= 0) {
+        markersRef.current[existing] = marker
+      } else {
+        markersRef.current.push(marker)
+        if (markersRef.current.length > MAX_MARKERS) {
+          markersRef.current.shift()
         }
       }
-
-      ws.onclose = () => {
-        reconnectRef.current = setTimeout(connect, backoffRef.current)
-        backoffRef.current = Math.min(backoffRef.current * 2, 30000)
-      }
-
-      ws.onerror = () => {}
     }
 
-    connect()
+    dirtyRef.current = true
+  }, [detectionsData])
 
-    return () => {
-      clearTimeout(reconnectRef.current)
-      if (wsRef.current) {
-        wsRef.current.onclose = null
-        wsRef.current.close()
+  // Handle telemetry from shared WebSocket context
+  useEffect(() => {
+    const msg = telemetryData
+    if (!msg) return
+
+    const prev = prevTelemetryRef.current
+    prevTelemetryRef.current = msg
+
+    if (msg.x_cm !== undefined && msg.y_cm !== undefined) {
+      droneRef.current = {
+        x: Math.max(0, Math.min(1, msg.x_cm / SRC_W)),
+        y: Math.max(0, Math.min(1, msg.y_cm / SRC_H)),
+      }
+    } else if (prev && msg.vx !== undefined && msg.vy !== undefined) {
+      const cur = droneRef.current ?? { x: 0.5, y: 0.5 }
+      droneRef.current = {
+        x: Math.max(0, Math.min(1, cur.x + msg.vx * 0.01)),
+        y: Math.max(0, Math.min(1, cur.y + msg.vy * 0.01)),
       }
     }
-  }, [])
+
+    dirtyRef.current = true
+  }, [telemetryData])
 
   // Render loop
   useEffect(() => {
