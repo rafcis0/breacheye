@@ -1,9 +1,9 @@
 import { useRef } from 'react'
 import { WebSocketProvider } from './contexts/WebSocketContext'
+import AppHeader from './components/AppHeader'
 import VideoPanel from './components/VideoPanel'
 import DetectionOverlay from './components/DetectionOverlay'
 import FlightControls from './components/FlightControls'
-import TelemetryHUD from './components/TelemetryHUD'
 import TacticalMap from './components/TacticalMap'
 import Map3D from './components/Map3D'
 import './App.css'
@@ -17,15 +17,7 @@ export default function App() {
       <div className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--bg-base)]">
 
         {/* Header — 48px fixed */}
-        <header className="app__header h-12 flex-shrink-0">
-          <div className="app__header-left">
-            <span className="app__logo">BREACHEYE</span>
-            <span className="app__tagline">Autonomous Indoor Mapping · NatSec 2026</span>
-          </div>
-          <div className="app__header-right">
-            <span className="app__badge">TACTICAL COP</span>
-          </div>
-        </header>
+        <AppHeader />
 
         {/* Main — flex row, fills remaining height between header and bottom bar */}
         <main className="flex-1 flex flex-row overflow-hidden">
@@ -43,11 +35,6 @@ export default function App() {
             {/* Flight controls — fixed height content */}
             <div className="flex-shrink-0">
               <FlightControls />
-            </div>
-
-            {/* Telemetry HUD — hidden from sidebar, data feeds header */}
-            <div className="hidden">
-              <TelemetryHUD />
             </div>
 
             {/* Tactical Map — flex-1 fills remaining space */}
