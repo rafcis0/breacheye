@@ -3,7 +3,7 @@ import { useEffect, useRef, useCallback } from 'react'
 // NOTE: This component creates its own WebSocket connection to /events.
 // When TelemetryHUD (PR #33) is merged, consolidate both into a shared
 // useWebSocket hook to avoid duplicate connections.
-const WS_URL = `ws://${window.location.host}/api/events`
+const WS_URL = 'ws://127.0.0.1:8000/events'
 
 // Source resolution for coordinate scaling
 const SRC_W = 960
