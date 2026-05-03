@@ -231,3 +231,20 @@ async def test_adapter_commands_issued() -> None:
 
     assert ("takeoff", ()) in adapter.commands
     assert ("hover", (0, 0, 0, 0)) in adapter.commands
+
+
+async def test_preflight_to_landing_allowed() -> None:
+    """Abort from PREFLIGHT skips flying guard (drone never took off)."""
+    fsm, adapter, _ = make_fsm()
+    await adapter.connect()
+    await fsm.transition(FlightState.LANDING)
+    assert fsm.state == FlightState.LANDING
+
+
+async def test_takeoff_to_landing_allowed() -> None:
+    """Battery emergency during climb must reach LANDING."""
+    fsm, adapter, _ = make_fsm()
+    await adapter.connect()
+    await fsm.transition(FlightState.TAKEOFF)
+    await fsm.transition(FlightState.LANDING)
+    assert fsm.state == FlightState.LANDING

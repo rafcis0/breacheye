@@ -21,9 +21,12 @@ class FlightState(StrEnum):
     COMPLETE = "complete"
 
 
+# LANDING reachable from every non-terminal state (battery emergency, operator ABORT).
+# ExplorationState mapping: coverage_complete → RETURNING, low_battery → battery monitor
+# triggers LANDING, obstacle_avoidance → transient within EXPLORING.
 TRANSITIONS: dict[FlightState, set[FlightState]] = {
-    FlightState.PREFLIGHT: {FlightState.TAKEOFF},
-    FlightState.TAKEOFF: {FlightState.EXPLORING},
+    FlightState.PREFLIGHT: {FlightState.TAKEOFF, FlightState.LANDING},
+    FlightState.TAKEOFF: {FlightState.EXPLORING, FlightState.LANDING},
     FlightState.EXPLORING: {
         FlightState.INVESTIGATING,
         FlightState.RETURNING,
@@ -93,7 +96,7 @@ class FlightStateMachine:
             checks = await self.preflight_check()
             if not checks["passed"]:
                 raise PreflightFailed(checks)
-        elif target == FlightState.LANDING:
+        elif target == FlightState.LANDING and self._state != FlightState.PREFLIGHT:
             drone_state = await self._adapter.get_state()
             if not drone_state.flying:
                 raise RuntimeError("cannot land: drone is not flying")
@@ -123,9 +126,5 @@ class FlightStateMachine:
 
     async def run_lifecycle(self) -> None:
         """Run full PREFLIGHT -> EXPLORING lifecycle. Convenience for sim/test."""
-        checks = await self.preflight_check()
-        if not checks["passed"]:
-            raise PreflightFailed(checks)
-
         await self.transition(FlightState.TAKEOFF)
         await self.transition(FlightState.EXPLORING)
