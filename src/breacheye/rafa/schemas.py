@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 PoiCategory = Literal["T1-01", "T1-02", "T1-03", "T2-02", "T2-03", "T3-01", "T4-01", "ROOM"]
 ThreatLevel = Literal["HOT", "WARM", "CAUTION", "CLEAR", "INFO"]
+ObstacleDirection = Literal["center", "left", "right", "unknown"]
 NavigationAction = Literal[
     "move_forward",
     "move_back",
@@ -112,6 +113,16 @@ class DepthOutput(StrictModel):
         return self
 
 
+class ObstacleAlert(StrictModel):
+    frame_id: int = Field(ge=0)
+    timestamp: float = Field(default_factory=time)
+    min_depth: float = Field(ge=0.0, le=1.0)
+    mean_center_depth: float = Field(ge=0.0, le=1.0)
+    obstacle_detected: bool
+    direction_hint: ObstacleDirection
+    clearance_score: float = Field(ge=0.0, le=1.0)
+
+
 class NavigationDecision(StrictModel):
     action: NavigationAction
     params: dict[str, int | float | str] = Field(default_factory=dict)
@@ -165,6 +176,7 @@ class SpatialNavigationContext(StrictModel):
     allowed_actions: list[NavigationAction] = Field(
         default_factory=lambda: ["hover", "move_forward", "rotate_left", "rotate_right"]
     )
+    obstacle_alert: ObstacleAlert | None = None
     source: str = "stub"
 
 

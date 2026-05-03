@@ -32,10 +32,12 @@ from breacheye.rafa.schemas import (
     NavigationAction,
     ModelStatus,
     NavigationOutput,
+    ObstacleAlert,
     SpatialNavigationContext,
     Throughput,
 )
-from breacheye.rafa.spatial_context import build_spatial_context, summarize_spatial_context
+from breacheye.rafa.depth_accumulator import DepthAccumulator
+from breacheye.rafa.spatial_context import build_obstacle_alert, build_spatial_context, summarize_spatial_context
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,7 @@ class RafaPipeline:
         )
         self._started_at = monotonic()
         self._last_health_at = 0.0
+        self._depth_accumulator = DepthAccumulator()
         self.errors = list(self.config.errors)
         self.logger = RunLogger("rafa", log_dir=self.config.log_dir, run_id=self.config.run_id)
         self.detector = StubDetector()
@@ -241,6 +244,19 @@ class RafaPipeline:
         timings["depth_ms"] = _elapsed_ms(stage_started_at)
         if depth is not None:
             self._log_depth_artifact(depth)
+            self._accumulate_depth(depth)
+        obstacle_alert: ObstacleAlert | None = None
+        if depth is not None:
+            obstacle_alert = build_obstacle_alert(depth, frame_ts=frame_meta.timestamp)
+            self.logger.event(
+                "obstacle_alert",
+                frame_id=frame_meta.frame_id,
+                obstacle_detected=obstacle_alert.obstacle_detected,
+                direction_hint=obstacle_alert.direction_hint,
+                min_depth=obstacle_alert.min_depth,
+                mean_center_depth=obstacle_alert.mean_center_depth,
+                clearance_score=obstacle_alert.clearance_score,
+            )
         stage_started_at = monotonic()
         navigation = await self._safe_navigation(frame, frame_meta, detection, depth)
         timings["navigation_ms"] = _elapsed_ms(stage_started_at)
@@ -248,6 +264,8 @@ class RafaPipeline:
         await self._publish("detections", detection)
         if depth is not None:
             await self._publish("depth", depth)
+        if obstacle_alert is not None:
+            await self._publish("detections", obstacle_alert)
         await self._publish("navigation", navigation)
         timings["publish_ms"] = _elapsed_ms(stage_started_at)
         self.logger.event(
@@ -369,6 +387,29 @@ class RafaPipeline:
                 fallback=True,
             )
             return fallback
+
+    @property
+    def depth_accumulator(self) -> DepthAccumulator:
+        """Accumulated depth samples keyed by heading estimate."""
+        return self._depth_accumulator
+
+    def _accumulate_depth(self, depth: DepthOutput) -> None:
+        """Feed a depth frame into the accumulator with the current yaw estimate."""
+        try:
+            import numpy as np
+
+            yaw_deg = float(
+                self._search_tactic.heading_index * self._search_tactic.scan_degrees
+            )
+            values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
+            self._depth_accumulator.add_sample(
+                frame_id=depth.frame_id,
+                timestamp=depth.timestamp,
+                yaw_deg=yaw_deg,
+                depth_array=values,
+            )
+        except Exception as exc:
+            self.logger.event("depth_accumulation_failed", frame_id=depth.frame_id, error=str(exc))
 
     def _apply_navigation_safety_override(
         self,
