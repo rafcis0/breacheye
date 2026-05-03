@@ -382,8 +382,8 @@ class RafaPipeline:
             frame_id=output.frame_id,
             timestamp=output.timestamp,
             decision=NavigationDecision(
-                action="hover",
-                params={"duration_ms": 500},
+                action="rotate_right",
+                params={"degrees": 20},
                 confidence=min(decision.confidence, 0.7),
                 reasoning=f"Safety override: {reason}. Requested move_forward: {decision.reasoning}",
                 exploration_state="obstacle_avoidance",

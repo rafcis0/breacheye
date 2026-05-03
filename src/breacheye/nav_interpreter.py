@@ -29,7 +29,9 @@ class NavInterpreter:
         self._poller = None
         self._consecutive_failures: int = 0
         self._forward_streak: int = 0
+        self._hover_streak: int = 0
         self._max_forward_streak: int = _env_int("BREACHEYE_NAV_MAX_FORWARD_STREAK", 3, minimum=1, maximum=20)
+        self._max_hover_streak: int = _env_int("BREACHEYE_NAV_MAX_HOVER_STREAK", 4, minimum=1, maximum=30)
         self._max_move_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_MOVE_DURATION_MS", 350, minimum=50, maximum=1000)
         self._max_yaw_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_YAW_DURATION_MS", 500, minimum=100, maximum=1000)
         self._airborne_settle_s: float = _env_float("BREACHEYE_NAV_AIRBORNE_SETTLE_S", 3.0, minimum=0.0, maximum=15.0)
@@ -211,6 +213,7 @@ class NavInterpreter:
     def _guard_action(self, decision: NavigationDecision) -> str:
         if decision.action == "move_forward":
             self._forward_streak += 1
+            self._hover_streak = 0
             if self._forward_streak > self._max_forward_streak:
                 self.logger.event(
                     "navigation_forward_streak_guard",
@@ -222,7 +225,22 @@ class NavInterpreter:
                 self._forward_streak = 0
                 return "rotate_right"
             return "move_forward"
+        if decision.action == "hover":
+            self._forward_streak = 0
+            self._hover_streak += 1
+            if self._hover_streak > self._max_hover_streak:
+                self.logger.event(
+                    "navigation_hover_scan_guard",
+                    requested_action=decision.action,
+                    substituted_action="rotate_right",
+                    hover_streak=self._hover_streak,
+                    max_hover_streak=self._max_hover_streak,
+                )
+                self._hover_streak = 0
+                return "rotate_right"
+            return "hover"
         self._forward_streak = 0
+        self._hover_streak = 0
         return decision.action
 
     async def _guard_command_for_health(self, frame_id: int, decision: NavigationDecision):
@@ -230,6 +248,7 @@ class NavInterpreter:
         telemetry = health.get("telemetry", {}) if health else {}
         if telemetry.get("connected") is True and telemetry.get("flying") is False:
             self._forward_streak = 0
+            self._hover_streak = 0
             self._first_airborne_at = None
             self.logger.event(
                 "navigation_skipped_grounded",
@@ -249,6 +268,7 @@ class NavInterpreter:
         attitude_reasons = self._unsafe_attitude_reasons(telemetry)
         if attitude_reasons:
             self._forward_streak = 0
+            self._hover_streak = 0
             cmd = DroneCommand(type=CommandType.EMERGENCY, issued_by="nav_interpreter_attitude_guard")
             self.logger.event(
                 "navigation_flight_state_guard",
@@ -262,6 +282,7 @@ class NavInterpreter:
 
         if _is_movement_action(decision.action) and now - self._first_airborne_at < self._airborne_settle_s:
             self._forward_streak = 0
+            self._hover_streak = 0
             cmd = DroneCommand(type=CommandType.HOVER, issued_by="nav_interpreter_settle_guard")
             self.logger.event(
                 "navigation_flight_state_guard",

@@ -184,6 +184,20 @@ def test_forward_streak_resets_on_non_forward(interp: NavInterpreter) -> None:
     assert next_forward.payload.forward_back > 0
 
 
+def test_hover_streak_guard_forces_scan_after_repeated_hover(interp: NavInterpreter) -> None:
+    interp._max_hover_streak = 2
+
+    first = interp._map_action(make_decision("hover"))
+    second = interp._map_action(make_decision("hover"))
+    third = interp._map_action(make_decision("hover"))
+
+    assert first.type == CommandType.HOVER
+    assert second.type == CommandType.HOVER
+    assert third.type == CommandType.RC_CONTROL
+    assert third.payload is not None
+    assert third.payload.yaw > 0
+
+
 @pytest.mark.asyncio
 async def test_handle_failure_hovers_below_threshold() -> None:
     """Below 3 failures, _handle_failure sends hover."""

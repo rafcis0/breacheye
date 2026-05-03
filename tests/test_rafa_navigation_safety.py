@@ -30,13 +30,13 @@ def test_navigation_safety_override_blocks_forward_when_depth_is_close(tmp_path,
 
     guarded = pipeline._apply_navigation_safety_override(output, context)
 
-    assert guarded.decision.action == "hover"
+    assert guarded.decision.action == "rotate_right"
     assert guarded.decision.exploration_state == "obstacle_avoidance"
     events = [json.loads(line) for line in (tmp_path / "safety-rafa.jsonl").read_text().splitlines()]
     override_events = [event for event in events if event["event"] == "navigation_safety_override"]
     assert override_events
     assert override_events[-1]["requested_action"] == "move_forward"
-    assert override_events[-1]["substituted_action"] == "hover"
+    assert override_events[-1]["substituted_action"] == "rotate_right"
 
 
 def test_navigation_safety_override_allows_forward_when_frontier_is_clear(tmp_path, monkeypatch) -> None:
