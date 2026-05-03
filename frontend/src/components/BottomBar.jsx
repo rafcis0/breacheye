@@ -1,7 +1,17 @@
 import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
 
 function Separator() {
-  return <span className="h-4 border-l border-white/10 mx-2" />
+  return (
+    <span
+      className="mx-3 flex-shrink-0"
+      style={{
+        width: '1px',
+        height: '16px',
+        background: 'rgba(255,255,255,0.10)',
+        display: 'inline-block',
+      }}
+    />
+  )
 }
 
 function StatusItem({ label, value, valueStyle }) {
@@ -21,6 +31,36 @@ function StatusItem({ label, value, valueStyle }) {
       </span>
     </div>
   )
+}
+
+function StatusDotItem({ label, dotColor, text, textColor }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="font-ui text-[11px] uppercase tracking-[0.14em]"
+        style={{ color: 'var(--color-text-subtle)' }}
+      >
+        {label}
+      </span>
+      <span
+        className="inline-block rounded-full flex-shrink-0"
+        style={{ width: '7px', height: '7px', background: dotColor }}
+      />
+      <span
+        className="font-mono text-[11px] font-medium"
+        style={{ color: textColor }}
+      >
+        {text}
+      </span>
+    </div>
+  )
+}
+
+function linkStatus(connected) {
+  if (connected) {
+    return { text: 'CONNECTED', color: 'var(--color-status-normal)' }
+  }
+  return { text: 'DOWN', color: 'var(--color-status-critical)' }
 }
 
 function wsHealthLabel(connectionState) {
@@ -43,10 +83,7 @@ export default function BottomBar() {
   const mode = flying ? 'AIRBORNE' : 'GROUNDED'
   const modeColor = flying ? 'var(--color-accent-blue)' : 'var(--color-text-subtle)'
 
-  const linkColor = connected
-    ? 'var(--color-status-normal)'
-    : 'var(--color-status-off)'
-
+  const link = linkStatus(connected)
   const poiCount = Array.isArray(detectionsData?.detections)
     ? detectionsData.detections.length
     : 0
@@ -58,16 +95,17 @@ export default function BottomBar() {
       className="h-8 flex-shrink-0 flex items-center justify-between px-4 z-10"
       style={{
         borderTop: '1px solid var(--color-border-default)',
-        background: 'var(--color-bg-deeper)',
+        background: 'rgba(10,10,15,0.95)',
         backdropFilter: 'blur(12px)',
       }}
     >
       {/* Left: system indicators */}
       <div className="flex items-center">
-        <StatusItem
+        <StatusDotItem
           label="LINK"
-          value={connected ? 'UP' : 'DOWN'}
-          valueStyle={{ color: linkColor }}
+          dotColor={link.color}
+          text={link.text}
+          textColor={link.color}
         />
         <Separator />
         <StatusItem
@@ -81,26 +119,20 @@ export default function BottomBar() {
           value={String(poiCount)}
         />
         <Separator />
-        {/* WS health */}
-        <div className="flex items-center gap-1.5">
-          <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: wsHealth.color }}
-          />
-          <span
-            className="font-mono text-[11px] font-medium"
-            style={{ color: wsHealth.color }}
-          >
-            {wsHealth.text}
-          </span>
-        </div>
+        {/* WS health with dot */}
+        <StatusDotItem
+          label="WS"
+          dotColor={wsHealth.color}
+          text={wsHealth.text}
+          textColor={wsHealth.color}
+        />
       </div>
 
       {/* Right: 3D toggle placeholder */}
       <button
         type="button"
         disabled
-        className="flex items-center gap-1.5 px-2 py-0.5 rounded border opacity-50 cursor-not-allowed"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded border opacity-40 cursor-not-allowed"
         title="3D view coming soon"
         style={{
           borderColor: 'var(--color-border-default)',
