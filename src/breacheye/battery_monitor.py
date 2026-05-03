@@ -76,7 +76,7 @@ class BatteryMonitor:
             return
 
         # Only trigger if FSM is in an active flight state
-        active_states = {FlightState.EXPLORING, FlightState.INVESTIGATING, FlightState.TAKEOFF}
+        active_states = {FlightState.EXPLORING, FlightState.INVESTIGATING, FlightState.TAKEOFF, FlightState.RETURNING}
         if self._fsm.state not in active_states:
             return
 

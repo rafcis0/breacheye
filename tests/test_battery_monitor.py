@@ -113,6 +113,25 @@ async def test_monitor_ignores_non_active_states() -> None:
         await monitor.stop()
 
 
+async def test_escalation_rtl_then_landing() -> None:
+    """RTL at 14%, then escalate to LANDING at 9%."""
+    monitor, fsm, adapter, bus = make_monitor(battery=100, poll_interval=0.05)
+    await adapter.connect()
+    await fsm.transition(FlightState.TAKEOFF)
+    await fsm.transition(FlightState.EXPLORING)
+    try:
+        adapter.state.battery = 14
+        await monitor.start()
+        await asyncio.sleep(0.15)
+        assert fsm.state == FlightState.RETURNING
+
+        adapter.state.battery = 9
+        await asyncio.sleep(0.15)
+        assert fsm.state == FlightState.LANDING
+    finally:
+        await monitor.stop()
+
+
 async def test_stop_cancels_task() -> None:
     monitor, fsm, adapter, bus = make_monitor(battery=100)
     await monitor.start()
