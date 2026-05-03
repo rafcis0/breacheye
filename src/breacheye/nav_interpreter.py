@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from time import monotonic
+from time import monotonic, time
 
 from breacheye.models import CommandType, DroneCommand, RCControlPayload
 from breacheye.rafa.codec import decode_navigation
@@ -44,6 +44,22 @@ class NavInterpreter:
         self._max_yaw_duration_ms: int = _env_int("BREACHEYE_NAV_MAX_YAW_DURATION_MS", 500, minimum=100, maximum=1000)
         self._airborne_settle_s: float = _env_float("BREACHEYE_NAV_AIRBORNE_SETTLE_S", 3.0, minimum=0.0, maximum=15.0)
         self._max_abs_attitude_deg: int = _env_int("BREACHEYE_NAV_MAX_ABS_ATTITUDE_DEG", 45, minimum=10, maximum=90)
+        self._drift_guard_enabled: bool = _env_bool("BREACHEYE_NAV_DRIFT_GUARD_ENABLED", True)
+        self._drift_flow_threshold_px: float = _env_float(
+            "BREACHEYE_NAV_DRIFT_FLOW_THRESHOLD_PX",
+            6.0,
+            minimum=1.0,
+            maximum=80.0,
+        )
+        self._drift_min_tof_cm: int = _env_int("BREACHEYE_NAV_DRIFT_MIN_TOF_CM", 45, minimum=0, maximum=300)
+        self._drift_land_after: int = _env_int("BREACHEYE_NAV_DRIFT_LAND_AFTER", 2, minimum=1, maximum=10)
+        self._drift_estimate_max_age_s: float = _env_float(
+            "BREACHEYE_NAV_DRIFT_ESTIMATE_MAX_AGE_S",
+            2.0,
+            minimum=0.1,
+            maximum=10.0,
+        )
+        self._unstable_hover_streak: int = 0
         self._first_airborne_at: float | None = None
         self._battery_threshold: int = 15
 
@@ -165,6 +181,12 @@ class NavInterpreter:
                 failures=self._consecutive_failures,
                 reasoning=nav.decision.reasoning,
             )
+            guarded_cmd = await self._guard_command_for_health(nav.frame_id, nav.decision)
+            if guarded_cmd is _GUARD_SKIP:
+                return False
+            if isinstance(guarded_cmd, DroneCommand):
+                await self._post_command(guarded_cmd)
+                return False
             await self._handle_failure()
             return False
 
@@ -335,6 +357,7 @@ class NavInterpreter:
         if attitude_reasons:
             self._forward_streak = 0
             self._hover_streak = 0
+            self._unstable_hover_streak = 0
             cmd = DroneCommand(type=CommandType.EMERGENCY, issued_by="nav_interpreter_attitude_guard")
             self.logger.event(
                 "navigation_flight_state_guard",
@@ -345,6 +368,33 @@ class NavInterpreter:
                 telemetry=telemetry,
             )
             return cmd
+
+        drift_reasons = self._hover_drift_reasons(health, telemetry)
+        if drift_reasons and now - self._first_airborne_at >= self._airborne_settle_s:
+            self._forward_streak = 0
+            self._hover_streak = 0
+            self._unstable_hover_streak += 1
+            command_type = CommandType.LAND if self._unstable_hover_streak >= self._drift_land_after else CommandType.HOVER
+            issued_by = (
+                "nav_interpreter_drift_land_guard"
+                if command_type == CommandType.LAND
+                else "nav_interpreter_drift_hover_guard"
+            )
+            cmd = DroneCommand(type=command_type, issued_by=issued_by)
+            self.logger.event(
+                "navigation_drift_guard",
+                frame_id=frame_id,
+                requested_action=decision.action,
+                substituted_command=cmd.type.value,
+                reasons=drift_reasons,
+                unstable_hover_streak=self._unstable_hover_streak,
+                drift_land_after=self._drift_land_after,
+                telemetry=telemetry,
+                stabilizer=health.get("stabilizer"),
+            )
+            return cmd
+        if not drift_reasons:
+            self._unstable_hover_streak = 0
 
         if _is_movement_action(decision.action) and now - self._first_airborne_at < self._airborne_settle_s:
             self._forward_streak = 0
@@ -361,6 +411,29 @@ class NavInterpreter:
             return cmd
 
         return None
+
+    def _hover_drift_reasons(self, health: dict, telemetry: dict) -> list[str]:
+        if not self._drift_guard_enabled:
+            return []
+
+        reasons: list[str] = []
+        raw = telemetry.get("raw") or {}
+        tof = _float_or_none(raw.get("tof"))
+        if tof is not None and tof < self._drift_min_tof_cm:
+            reasons.append(f"tof={tof:g}cm<{self._drift_min_tof_cm}cm")
+
+        stabilizer = health.get("stabilizer") or {}
+        estimate = stabilizer.get("last_estimate") or {}
+        if estimate:
+            timestamp = _float_or_none(estimate.get("timestamp"))
+            if timestamp is None or time() - timestamp <= self._drift_estimate_max_age_s:
+                dx = _float_or_none(estimate.get("median_dx_px"))
+                dy = _float_or_none(estimate.get("median_dy_px"))
+                if dx is not None and abs(dx) >= self._drift_flow_threshold_px:
+                    reasons.append(f"image_dx={dx:.1f}px")
+                if dy is not None and abs(dy) >= self._drift_flow_threshold_px:
+                    reasons.append(f"image_dy={dy:.1f}px")
+        return reasons
 
     def _unsafe_attitude_reasons(self, telemetry: dict) -> list[str]:
         raw = telemetry.get("raw") or {}

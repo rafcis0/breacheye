@@ -126,6 +126,7 @@ def run_flight(config: FlightLaunchConfig) -> int:
     )
     os.environ["BREACHEYE_RUN_ID"] = run_id
     os.environ["BREACHEYE_LOG_DIR"] = config.log_dir
+    _apply_live_safety_defaults(os.environ, mode=config.mode, auto_takeoff=config.auto_takeoff)
     _apply_local_model_defaults(os.environ, config.rafa_mode)
     write_preflight(log_dir=config.log_dir, run_id=run_id)
 
@@ -244,6 +245,11 @@ def _apply_local_model_defaults(env: dict[str, str], rafa_mode: str) -> None:
         env["BREACHEYE_QWEN_SERVER_URL"] = "http://127.0.0.1:56262"
     if "BREACHEYE_QWEN_MAX_TOKENS" not in env:
         env["BREACHEYE_QWEN_MAX_TOKENS"] = "32"
+
+
+def _apply_live_safety_defaults(env: dict[str, str], *, mode: str, auto_takeoff: bool) -> None:
+    if auto_takeoff and mode in {"live", "tello"}:
+        env.setdefault("BREACHEYE_STABILIZER_MODE", "log")
 
 
 def _qwen_server_available(url: str = "http://127.0.0.1:56262") -> bool:
@@ -703,6 +709,7 @@ def run_demo(
     base_url = f"http://{host}:{port}"
     os.environ["BREACHEYE_RUN_ID"] = run_id
     os.environ["BREACHEYE_LOG_DIR"] = log_dir
+    _apply_live_safety_defaults(os.environ, mode=resolved_mode, auto_takeoff=auto_takeoff)
     if resolved_mode == "live":
         _apply_local_model_defaults(os.environ, "models")
 

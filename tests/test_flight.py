@@ -1,6 +1,7 @@
 from breacheye.flight import (
     FlightLaunchConfig,
     _apply_local_model_defaults,
+    _apply_live_safety_defaults,
     _command_timeout_s,
     _harness_health_summary,
     _post_command_checked,
@@ -75,6 +76,22 @@ def test_model_flight_applies_local_model_defaults(monkeypatch, tmp_path) -> Non
     assert env["BREACHEYE_QWEN_MMPROJ"] == str(mmproj)
     assert env["BREACHEYE_DEPTH_ANYTHING_PATH"] == str(depth)
     assert env["BREACHEYE_QWEN_SERVER_URL"] == "http://127.0.0.1:56262"
+
+
+def test_live_safety_defaults_enable_stabilizer_log_for_auto_takeoff() -> None:
+    env: dict[str, str] = {}
+
+    _apply_live_safety_defaults(env, mode="tello", auto_takeoff=True)
+
+    assert env["BREACHEYE_STABILIZER_MODE"] == "log"
+
+
+def test_live_safety_defaults_preserve_explicit_stabilizer_mode() -> None:
+    env = {"BREACHEYE_STABILIZER_MODE": "assist"}
+
+    _apply_live_safety_defaults(env, mode="live", auto_takeoff=True)
+
+    assert env["BREACHEYE_STABILIZER_MODE"] == "assist"
 
 
 def test_shutdown_land_posts_hover_then_land(monkeypatch) -> None:

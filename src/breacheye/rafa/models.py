@@ -120,14 +120,14 @@ class LazyQwen3VLNavigator(NavigationAdapter):
         depth_hint = _depth_prompt_hint(depth)
         if self.server_url:
             result = await asyncio.to_thread(self._run_server, frame, depth_hint)
-            action = _extract_action(result)
+            action, confidence = _extract_decision_fields(result)
             return NavigationOutput(
                 frame_id=meta.frame_id,
                 timestamp=time.time(),
                 decision=NavigationDecision(
                     action=action,
                     params=_params_for_action(action),
-                    confidence=0.72 if action != "hover" else 0.67,
+                    confidence=confidence,
                     reasoning=f"Qwen3-VL server output: {result[-240:]}",
                     exploration_state="exploring",
                 ),
@@ -143,14 +143,14 @@ class LazyQwen3VLNavigator(NavigationAdapter):
                 os.unlink(image_path)
             except FileNotFoundError:
                 pass
-        action = _extract_action(result)
+        action, confidence = _extract_decision_fields(result)
         return NavigationOutput(
             frame_id=meta.frame_id,
             timestamp=time.time(),
             decision=NavigationDecision(
                 action=action,
                 params=_params_for_action(action),
-                confidence=0.7 if action != "hover" else 0.65,
+                confidence=confidence,
                 reasoning=f"Qwen3-VL output: {result[-240:]}",
                 exploration_state="exploring",
             ),
@@ -292,14 +292,14 @@ class SmolVLMNavigator(NavigationAdapter):
         with self.torch.inference_mode():
             generated = self.model.generate(**inputs, do_sample=False, max_new_tokens=64)
         text = self.processor.batch_decode(generated, skip_special_tokens=True)[0]
-        action = _extract_action(text)
+        action, confidence = _extract_decision_fields(text)
         return NavigationOutput(
             frame_id=meta.frame_id,
             timestamp=time.time(),
             decision=NavigationDecision(
                 action=action,
                 params=_params_for_action(action),
-                confidence=0.55 if action != "hover" else 0.5,
+                confidence=confidence,
                 reasoning=f"SmolVLM output: {text[-240:]}",
                 exploration_state="exploring",
             ),
@@ -307,6 +307,10 @@ class SmolVLMNavigator(NavigationAdapter):
 
 
 def _extract_action(text: str) -> str:
+    return _extract_decision_fields(text)[0]
+
+
+def _extract_decision_fields(text: str) -> tuple[str, float]:
     allowed = {"hover", "move_forward", "rotate_left", "rotate_right"}
     try:
         match = re.search(r"\{.*?\}", text, flags=re.DOTALL)
@@ -314,13 +318,27 @@ def _extract_action(text: str) -> str:
             parsed = json.loads(match.group(0))
             action = str(parsed.get("action", "")).lower()
             if action in allowed:
-                return action
+                return action, _confidence_or_default(parsed.get("confidence"), action)
     except Exception:
         pass
     for action in ("move_forward", "rotate_left", "rotate_right", "hover"):
         if re.search(rf"\b{re.escape(action)}\b", text, flags=re.IGNORECASE):
-            return action
-    return "hover"
+            return action, _fallback_confidence(action)
+    return "hover", _fallback_confidence("hover")
+
+
+def _confidence_or_default(value: object, action: str) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return _fallback_confidence(action)
+    return max(0.0, min(1.0, confidence))
+
+
+def _fallback_confidence(action: str) -> float:
+    if action == "hover":
+        return 0.55
+    return 0.45
 
 
 def _binary_available(binary: str) -> bool:

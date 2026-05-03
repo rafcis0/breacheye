@@ -356,6 +356,79 @@ async def test_guard_emergency_stops_on_severe_attitude() -> None:
 
 
 @pytest.mark.asyncio
+async def test_guard_hovers_then_lands_on_repeated_hover_drift() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "accepts_nav": True,
+                "telemetry": {
+                    "connected": True,
+                    "flying": True,
+                    "height_cm": 80,
+                    "raw": {"pitch": 0, "roll": 0, "tof": 90},
+                },
+                "stabilizer": {
+                    "last_estimate": {
+                        "median_dx_px": 7.0,
+                        "median_dy_px": 0.0,
+                        "tracked_features": 40,
+                    },
+                },
+            }
+
+    class Client:
+        async def get(self, url):
+            return Response()
+
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+    interp._airborne_settle_s = 0.0
+    interp._drift_land_after = 2
+
+    first = await interp._guard_command_for_health(10, make_decision("rotate_right"))
+    second = await interp._guard_command_for_health(11, make_decision("rotate_right"))
+
+    assert first.type == CommandType.HOVER
+    assert first.issued_by == "nav_interpreter_drift_hover_guard"
+    assert second.type == CommandType.LAND
+    assert second.issued_by == "nav_interpreter_drift_land_guard"
+
+
+@pytest.mark.asyncio
+async def test_guard_lands_when_tof_drops_during_autonomy() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "accepts_nav": True,
+                "telemetry": {
+                    "connected": True,
+                    "flying": True,
+                    "height_cm": 40,
+                    "raw": {"pitch": 0, "roll": 0, "tof": 37},
+                },
+                "stabilizer": {"last_estimate": {}},
+            }
+
+    class Client:
+        async def get(self, url):
+            return Response()
+
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+    interp._airborne_settle_s = 0.0
+    interp._drift_land_after = 1
+
+    guarded = await interp._guard_command_for_health(12, make_decision("hover"))
+
+    assert guarded.type == CommandType.LAND
+    assert guarded.issued_by == "nav_interpreter_drift_land_guard"
+
+
+@pytest.mark.asyncio
 async def test_post_command_raises_when_safety_rejects_command() -> None:
     class Response:
         status_code = 200
