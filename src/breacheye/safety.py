@@ -137,7 +137,7 @@ class SafetyController:
 
     async def _is_flying(self) -> bool:
         state = await self.adapter.get_state()
-        return bool(state.flying or (state.height_cm is not None and state.height_cm > 10))
+        return bool(state.flying)
 
     async def _preflight_takeoff(self) -> None:
         state = await self.adapter.get_state()
