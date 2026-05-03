@@ -79,8 +79,13 @@ def _nearest_center_depth(depth: DepthOutput | None) -> float | None:
         band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
         if not band.size:
             return None
+        finite = band[np.isfinite(band)]
+        if not finite.size:
+            return None
         # Depth Anything output is relative, so this is a normalized proximity hint, not meters.
-        return float(np.nanmin(band))
+        # Use the center-band median instead of the absolute minimum so noisy pixels or a
+        # small near object do not incorrectly close an otherwise open forward frontier.
+        return float(np.nanpercentile(finite, 50))
     except Exception:
         return None
 

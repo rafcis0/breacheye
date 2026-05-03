@@ -85,14 +85,26 @@ breacheye fly --mode tello --rafa-mode models --fps 5 --run-id "$BREACHEYE_RUN_I
 Only add automatic takeoff for a clear test area with a human ready to intervene:
 
 ```bash
-breacheye fly --mode tello --rafa-mode models --fps 5 --run-id "$BREACHEYE_RUN_ID" --auto-takeoff
+breacheye fly --mode tello --rafa-mode models --fps 2 --run-id "$BREACHEYE_RUN_ID" --auto-takeoff
 ```
+
+Auto-takeoff climbs an extra 100 cm by default to reduce ground-effect drift. Use `--takeoff-climb-cm 0` to disable or `--takeoff-climb-cm 120` to tune it for the room.
 
 Simulator rehearsal:
 
 ```bash
 breacheye fly --mode sim --rafa-mode stub --duration-s 20
 ```
+
+For non-flight demos, use the fallback launcher instead:
+
+```bash
+breacheye demo --mode live --fps 5
+breacheye demo --mode recorded --video demo/sample.mp4 --duration-s 20
+breacheye demo --mode mock --duration-s 20
+```
+
+`demo --mode live` starts the live stack but does not issue takeoff; use `fly --auto-takeoff` for physical flight.
 
 ## Troubleshooting
 

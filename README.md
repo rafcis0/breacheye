@@ -136,6 +136,16 @@ Connect the Mac to the `Tello-XXXXXX` Wi-Fi network first. Use a second network 
 
 ## One-Command Flight Loop
 
+Use `breacheye demo` for table/demo-screen fallback mode. It can run live, recorded, or mock components and auto-degrades if Tello/video assets are unavailable:
+
+```bash
+breacheye demo --mode live --fps 5
+breacheye demo --mode recorded --video demo/sample.mp4 --duration-s 20
+breacheye demo --mode mock --duration-s 20
+```
+
+`demo --mode live` does not issue takeoff. Use `breacheye fly` for physical flight.
+
 Run the full loop in simulator mode first:
 
 ```bash
@@ -151,8 +161,10 @@ breacheye fly --mode tello --rafa-mode models --fps 5
 Add `--auto-takeoff` only when the area is clear, prop guards are on, and a human is ready to land or emergency-stop:
 
 ```bash
-breacheye fly --mode tello --rafa-mode models --fps 5 --auto-takeoff
+breacheye fly --mode tello --rafa-mode models --fps 2 --auto-takeoff
 ```
+
+Auto-takeoff climbs an extra 100 cm by default to reduce ground-effect drift. Override with `--takeoff-climb-cm 120`, or disable with `--takeoff-climb-cm 0`.
 
 The launcher writes a preflight snapshot, starts the safety harness, starts Rafa, publishes frames into ZMQ, and bridges validated navigation decisions back to `/commands`. The Tello hardware connection stays owned by the harness; the frame publisher reads `/frame/latest`.
 
@@ -172,6 +184,7 @@ Ready on `main`:
 - [x] Spatial navigation context schema and `navigation_context_built` logs.
 - [x] One-command simulator loop: `breacheye fly --mode sim --rafa-mode stub --duration-s 20`.
 - [x] One-command Tello loop: `breacheye fly --mode tello --rafa-mode models --fps 5`.
+- [x] Demo launcher: `breacheye demo --mode live|recorded|mock` with live-to-recorded-to-mock fallback.
 - [x] Harness-owned frame source, so only the harness owns the Tello connection.
 - [x] Nav bridge from Rafa navigation decisions to `/commands`.
 - [x] README and hardware runbook document the flow.
@@ -190,7 +203,7 @@ Still missing:
 - [ ] Run `breacheye rafa doctor --require-models` with final local model paths.
 - [ ] Run `breacheye fly --mode sim --rafa-mode models --duration-s 20` with Qwen + Depth Anything before touching the drone.
 - [ ] Run the Tello loop without auto takeoff first: `breacheye fly --mode tello --rafa-mode models --fps 5`; verify `/health`, logs, frame publisher logs, and Rafa nav logs.
-- [ ] Only after that, run `breacheye fly --mode tello --rafa-mode models --fps 5 --auto-takeoff`.
+- [ ] Only after that, run `breacheye fly --mode tello --rafa-mode models --fps 2 --auto-takeoff`.
 - [ ] Add VGGT-MPS runner once the download completes.
 - [ ] Convert VGGT output into real `SpatialNavigationContext`: pose, looking direction, visited regions, frontiers, known objects.
 - [ ] Feed real spatial context into the Qwen prompt. It is logged now, but not yet injected into the navigator prompt.

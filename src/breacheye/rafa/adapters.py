@@ -160,6 +160,9 @@ def _has_close_center_obstacle(depth: DepthOutput | None) -> bool:
         values = np.frombuffer(depth.depth_bytes, dtype=np.float32).reshape(depth.shape)
         height, width = values.shape
         band = values[height // 3 : (height * 2) // 3, width // 3 : (width * 2) // 3]
-        return bool(band.size and float(np.nanmin(band)) < 0.15)
+        finite = band[np.isfinite(band)]
+        if not finite.size:
+            return True
+        return bool(float(np.nanpercentile(finite, 50)) < 0.15)
     except Exception:
         return True
