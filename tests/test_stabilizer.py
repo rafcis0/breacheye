@@ -30,6 +30,19 @@ def _shifted_frames():
     return encode_jpeg(base), encode_jpeg(shifted)
 
 
+def _scaled_frames(scale: float = 0.92):
+    import cv2
+    import numpy as np
+
+    base = np.zeros((120, 160, 3), dtype=np.uint8)
+    for x in range(20, 150, 30):
+        for y in range(20, 105, 25):
+            cv2.circle(base, (x, y), 3, (255, 255, 255), -1)
+    matrix = cv2.getRotationMatrix2D((80, 60), 0, scale)
+    scaled = cv2.warpAffine(base, matrix, (160, 120))
+    return encode_jpeg(base), encode_jpeg(scaled)
+
+
 def test_estimate_motion_detects_lateral_image_shift() -> None:
     previous, current = _shifted_frames()
     config = StabilizerConfig(mode="log", min_features=4, flow_threshold_px=1.0)
@@ -39,6 +52,16 @@ def test_estimate_motion_detects_lateral_image_shift() -> None:
     assert estimate.tracked_features >= 4
     assert estimate.median_dx_px > 4.0
     assert _left_right_correction(estimate, config) > 0
+
+
+def test_estimate_motion_detects_radial_image_contraction() -> None:
+    previous, current = _scaled_frames(scale=0.9)
+    config = StabilizerConfig(mode="log", min_features=4)
+
+    estimate = estimate_motion(previous, current, config)
+
+    assert estimate.tracked_features >= 4
+    assert estimate.median_radial_px < -1.0
 
 
 @pytest.mark.asyncio
@@ -54,7 +77,7 @@ async def test_stabilizer_log_mode_does_not_send_commands(tmp_path) -> None:
         safety,
         store,
         AsyncEventBus(),
-        config=StabilizerConfig(mode="log", min_features=4, flow_threshold_px=1.0),
+        config=StabilizerConfig(mode="log", min_features=4, flow_threshold_px=1.0, safety_guard_enabled=False),
         log_dir=str(tmp_path),
         run_id="stab-log",
     )
@@ -89,6 +112,7 @@ async def test_stabilizer_assist_sends_tiny_correction_when_idle(tmp_path) -> No
             idle_after_s=0.0,
             max_left_right=6,
             duration_ms=50,
+            safety_guard_enabled=False,
         ),
         log_dir=str(tmp_path),
         run_id="stab-assist",
@@ -103,3 +127,66 @@ async def test_stabilizer_assist_sends_tiny_correction_when_idle(tmp_path) -> No
     assert rc_commands
     assert 0 < rc_commands[-1][1][0] <= 6
     assert stabilizer.status()["last_correction"]["left_right"] == rc_commands[-1][1][0]
+
+
+@pytest.mark.asyncio
+async def test_stabilizer_safety_guard_lands_in_log_mode(tmp_path) -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    await adapter.takeoff()
+    safety = SafetyController(adapter, AsyncEventBus())
+    store = FrameStore(sample_fps=1000)
+    previous, current = _shifted_frames()
+    store.update_jpeg(previous, width=160, height=120)
+    stabilizer = FlightStabilizer(
+        safety,
+        store,
+        AsyncEventBus(),
+        config=StabilizerConfig(
+            mode="log",
+            min_features=4,
+            safety_flow_threshold_px=1.0,
+            safety_land_after=1,
+        ),
+        log_dir=str(tmp_path),
+        run_id="stab-guard",
+    )
+
+    await stabilizer._tick()
+    store.update_jpeg(current, width=160, height=120)
+    await stabilizer._tick()
+
+    assert ("land", ()) in adapter.commands
+    assert stabilizer.status()["last_skip_reason"].startswith("safety_guard:")
+
+
+@pytest.mark.asyncio
+async def test_stabilizer_safety_guard_catches_forward_back_drift(tmp_path) -> None:
+    adapter = SimAdapter()
+    await adapter.connect()
+    await adapter.takeoff()
+    safety = SafetyController(adapter, AsyncEventBus())
+    store = FrameStore(sample_fps=1000)
+    previous, current = _scaled_frames(scale=0.9)
+    store.update_jpeg(previous, width=160, height=120)
+    stabilizer = FlightStabilizer(
+        safety,
+        store,
+        AsyncEventBus(),
+        config=StabilizerConfig(
+            mode="log",
+            min_features=4,
+            safety_flow_threshold_px=50.0,
+            safety_radial_threshold_px=1.0,
+            safety_land_after=1,
+        ),
+        log_dir=str(tmp_path),
+        run_id="stab-radial-guard",
+    )
+
+    await stabilizer._tick()
+    store.update_jpeg(current, width=160, height=120)
+    await stabilizer._tick()
+
+    assert ("land", ()) in adapter.commands
+    assert "image_radial_contracting" in stabilizer.status()["last_skip_reason"]

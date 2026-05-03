@@ -29,6 +29,11 @@ class StabilizerConfig:
     min_height_cm: int = 35
     max_tof_cm: int = 500
     resized_width: int = 160
+    safety_guard_enabled: bool = True
+    safety_flow_threshold_px: float = 6.0
+    safety_radial_threshold_px: float = 2.0
+    safety_min_tof_cm: int = 60
+    safety_land_after: int = 2
 
     @classmethod
     def from_env(cls, mode: str | None = None) -> "StabilizerConfig":
@@ -48,6 +53,21 @@ class StabilizerConfig:
             min_height_cm=_env_int("BREACHEYE_STABILIZER_MIN_HEIGHT_CM", 35, minimum=0, maximum=200),
             max_tof_cm=_env_int("BREACHEYE_STABILIZER_MAX_TOF_CM", 500, minimum=30, maximum=1000),
             resized_width=_env_int("BREACHEYE_STABILIZER_RESIZED_WIDTH", 160, minimum=80, maximum=640),
+            safety_guard_enabled=_env_bool("BREACHEYE_STABILIZER_SAFETY_GUARD_ENABLED", True),
+            safety_flow_threshold_px=_env_float(
+                "BREACHEYE_STABILIZER_SAFETY_FLOW_THRESHOLD_PX",
+                6.0,
+                minimum=1.0,
+                maximum=80.0,
+            ),
+            safety_radial_threshold_px=_env_float(
+                "BREACHEYE_STABILIZER_SAFETY_RADIAL_THRESHOLD_PX",
+                2.0,
+                minimum=0.1,
+                maximum=40.0,
+            ),
+            safety_min_tof_cm=_env_int("BREACHEYE_STABILIZER_SAFETY_MIN_TOF_CM", 60, minimum=0, maximum=300),
+            safety_land_after=_env_int("BREACHEYE_STABILIZER_SAFETY_LAND_AFTER", 2, minimum=1, maximum=10),
         )
 
 
@@ -55,6 +75,7 @@ class StabilizerConfig:
 class MotionEstimate:
     median_dx_px: float
     median_dy_px: float
+    median_radial_px: float
     tracked_features: int
     frame_width: int
     frame_height: int
@@ -89,6 +110,7 @@ class FlightStabilizer:
         self._last_estimate: dict | None = None
         self._last_correction: dict | None = None
         self._last_skip_reason: str | None = None
+        self._safety_guard_streak: int = 0
 
     async def start(self) -> None:
         self.logger.event("stabilizer_config", config=asdict(self.config))
@@ -165,6 +187,9 @@ class FlightStabilizer:
             command_age_s=command_age_s,
         )
 
+        if await self._run_safety_guard(telemetry, estimate, command_age_s):
+            return
+
         if correction == 0:
             self._last_skip_reason = "below_flow_threshold"
             self._log("stabilizer_correction_skipped", reason="below_flow_threshold", estimate=estimate_payload)
@@ -215,6 +240,43 @@ class FlightStabilizer:
         }
         self._log("stabilizer_correction_result", correction=self._last_correction)
 
+    async def _run_safety_guard(
+        self,
+        telemetry: DroneTelemetry,
+        estimate: MotionEstimate,
+        command_age_s: float,
+    ) -> bool:
+        reasons = _safety_guard_reasons(telemetry, estimate, self.config)
+        if not reasons:
+            self._safety_guard_streak = 0
+            return False
+
+        self._safety_guard_streak += 1
+        command_type = CommandType.LAND if self._safety_guard_streak >= self.config.safety_land_after else CommandType.HOVER
+        command = DroneCommand(type=command_type, issued_by="stabilizer_safety_guard")
+        self._log(
+            "stabilizer_safety_guard",
+            command=command.model_dump(mode="json"),
+            command_age_s=command_age_s,
+            reasons=reasons,
+            safety_guard_streak=self._safety_guard_streak,
+            safety_land_after=self.config.safety_land_after,
+            estimate=asdict(estimate),
+            telemetry=telemetry.model_dump(mode="json"),
+        )
+        result = await self.safety.execute(command)
+        self._last_correction = {
+            "timestamp": time(),
+            "left_right": 0,
+            "result": result.model_dump(mode="json"),
+            "estimate": asdict(estimate),
+            "safety_guard": True,
+            "reasons": reasons,
+        }
+        self._log("stabilizer_safety_guard_result", correction=self._last_correction)
+        self._last_skip_reason = "safety_guard:" + ",".join(reasons)
+        return True
+
     def _log(self, event: str, **fields) -> None:
         self.logger.event(event, **fields)
         try:
@@ -245,12 +307,24 @@ def estimate_motion(previous_jpeg: bytes, current_jpeg: bytes, config: Stabilize
     valid = status.reshape(-1) == 1
     if int(valid.sum()) < config.min_features:
         raise ValueError(f"too_few_tracked_features:{int(valid.sum())}")
+    previous_points = features[valid].reshape(-1, 2)
     deltas = (next_points[valid] - features[valid]).reshape(-1, 2)
     median_dx = float(np.median(deltas[:, 0]))
     median_dy = float(np.median(deltas[:, 1]))
+    center = np.array([current.shape[1] / 2.0, current.shape[0] / 2.0], dtype=np.float32)
+    radial = previous_points - center
+    norms = np.linalg.norm(radial, axis=1)
+    usable = norms > 1e-6
+    if np.any(usable):
+        radial_unit = radial[usable] / norms[usable, None]
+        radial_motion = np.sum(deltas[usable] * radial_unit, axis=1)
+        median_radial = float(np.median(radial_motion))
+    else:
+        median_radial = 0.0
     return MotionEstimate(
         median_dx_px=median_dx,
         median_dy_px=median_dy,
+        median_radial_px=median_radial,
         tracked_features=int(valid.sum()),
         frame_width=int(current.shape[1]),
         frame_height=int(current.shape[0]),
@@ -279,6 +353,28 @@ def _left_right_correction(estimate: MotionEstimate, config: StabilizerConfig) -
     if raw == 0:
         raw = 1 if estimate.median_dx_px > 0 else -1
     return max(-config.max_left_right, min(config.max_left_right, raw))
+
+
+def _safety_guard_reasons(
+    telemetry: DroneTelemetry,
+    estimate: MotionEstimate,
+    config: StabilizerConfig,
+) -> list[str]:
+    if not config.safety_guard_enabled:
+        return []
+    reasons: list[str] = []
+    if abs(estimate.median_dx_px) >= config.safety_flow_threshold_px:
+        reasons.append(f"image_dx={estimate.median_dx_px:.1f}px")
+    if abs(estimate.median_dy_px) >= config.safety_flow_threshold_px:
+        reasons.append(f"image_dy={estimate.median_dy_px:.1f}px")
+    if abs(estimate.median_radial_px) >= config.safety_radial_threshold_px:
+        direction = "expanding" if estimate.median_radial_px > 0 else "contracting"
+        reasons.append(f"image_radial_{direction}={estimate.median_radial_px:.1f}px")
+    raw = telemetry.raw or {}
+    tof = _float_or_none(raw.get("tof"))
+    if tof is not None and tof < config.safety_min_tof_cm:
+        reasons.append(f"tof={tof:g}cm<{config.safety_min_tof_cm}cm")
+    return reasons
 
 
 def _telemetry_guard(telemetry: DroneTelemetry, config: StabilizerConfig) -> str | None:
@@ -326,3 +422,10 @@ def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
