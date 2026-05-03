@@ -278,11 +278,28 @@ class NavInterpreter:
     async def _post_command(self, cmd: DroneCommand) -> None:
         assert self._client is not None, "call start() before _post_command()"
         resp = await self._client.post(self.command_url, json=cmd.model_dump(mode="json"))
+        response_status = None
+        response_reason = None
+        try:
+            response_payload = resp.json()
+            response_status = response_payload.get("status")
+            response_reason = response_payload.get("reason")
+        except Exception:
+            pass
         self.logger.event(
             "command_posted",
             command_id=cmd.command_id,
             command_type=cmd.type.value,
+            command_payload=cmd.payload.model_dump(mode="json") if cmd.payload else None,
+            command_ttl_ms=cmd.ttl_ms,
             status_code=resp.status_code,
+            response_status=response_status,
+            response_reason=response_reason,
         )
         if resp.status_code != 200:
             logger.warning("post failed status=%d", resp.status_code)
+            raise RuntimeError(f"command post failed status={resp.status_code}")
+        if response_status != "executed":
+            reason = response_reason or response_status or "missing command response body"
+            logger.warning("command failed cmd_id=%s status=%s reason=%s", cmd.command_id, response_status, reason)
+            raise RuntimeError(f"command {cmd.command_id} failed: {reason}")

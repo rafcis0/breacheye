@@ -305,3 +305,41 @@ async def test_is_grounded_does_not_skip_when_flying() -> None:
     interp._client = Client()
 
     assert await interp._is_grounded() is False
+
+
+@pytest.mark.asyncio
+async def test_post_command_raises_when_safety_rejects_command() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"status": "failed", "reason": "cannot rc_control while not flying"}
+
+    class Client:
+        async def post(self, url, json):
+            return Response()
+
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+    cmd = interp._map_action(make_decision("move_forward"))
+
+    with pytest.raises(RuntimeError, match="cannot rc_control while not flying"):
+        await interp._post_command(cmd)
+
+
+@pytest.mark.asyncio
+async def test_post_command_accepts_executed_command() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"status": "executed", "reason": None}
+
+    class Client:
+        async def post(self, url, json):
+            return Response()
+
+    interp = NavInterpreter(command_url="http://localhost:8000/commands")
+    interp._client = Client()
+
+    await interp._post_command(interp._map_action(make_decision("hover")))

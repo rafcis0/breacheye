@@ -2,7 +2,7 @@ import numpy as np
 
 from breacheye.rafa.codec import decode_frame
 from breacheye.video import encode_jpeg
-from integration.frame_publisher import frame_payload, harness_frames, synthetic_frames
+from integration.frame_publisher import frame_payload, harness_frame_skip_reason, harness_frames, synthetic_frames
 
 
 def test_frame_payload_matches_frame_contract() -> None:
@@ -54,7 +54,9 @@ def test_harness_frames_decodes_latest_frame(monkeypatch) -> None:
 
     monkeypatch.setattr(httpx, "Client", FakeClient)
 
-    decoded = next(harness_frames("http://harness/frame/latest"))
+    decoded = next(
+        harness_frames("http://harness/frame/latest", min_width=0, min_height=0, min_mean_luma=0, min_luma_stddev=0)
+    )
 
     assert decoded.shape == (6, 8, 3)
     assert decoded.dtype == np.uint8
@@ -96,7 +98,28 @@ def test_harness_frames_waits_for_harness_connection(monkeypatch):
     monkeypatch.setattr(httpx, "Client", FakeClient)
     monkeypatch.setattr("time.sleep", lambda _seconds: None)
 
-    decoded = next(harness_frames("http://harness/frame/latest"))
+    decoded = next(
+        harness_frames("http://harness/frame/latest", min_width=0, min_height=0, min_mean_luma=0, min_luma_stddev=0)
+    )
 
     assert decoded.shape == (6, 8, 3)
     assert FakeClient.calls == 2
+
+
+def test_harness_frame_skip_reason_rejects_small_warmup_frame() -> None:
+    frame = np.full((300, 400, 3), 128, dtype=np.uint8)
+
+    assert harness_frame_skip_reason(frame) == "too_small"
+
+
+def test_harness_frame_skip_reason_rejects_blank_frame() -> None:
+    frame = np.zeros((720, 960, 3), dtype=np.uint8)
+
+    assert harness_frame_skip_reason(frame) == "too_dark"
+
+
+def test_harness_frame_skip_reason_accepts_real_sized_visible_frame() -> None:
+    frame = np.full((720, 960, 3), 30, dtype=np.uint8)
+    frame[:, 480:] = 180
+
+    assert harness_frame_skip_reason(frame) is None

@@ -4,7 +4,7 @@ import argparse
 import itertools
 import time
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from breacheye.rafa.codec import encode_msgpack
 from breacheye.rafa.schemas import FrameInput
@@ -30,7 +30,7 @@ def main() -> None:
 
     publisher = FramePublisher(host=args.host, port=args.port, fps=args.fps, log_dir=args.log_dir, run_id=args.run_id)
     if args.harness_url:
-        frames = harness_frames(args.harness_url)
+        frames = harness_frames(args.harness_url, on_skip=publisher.log_harness_skip)
     elif args.tello:
         frames = tello_frames()
     elif args.mock_video:
@@ -80,6 +80,9 @@ class FramePublisher:
         finally:
             self.logger.event("publisher_stop")
             socket.close(linger=0)
+
+    def log_harness_skip(self, **fields) -> None:
+        self.logger.event("harness_frame_skipped", **fields)
 
 
 def frame_payload(frame_id: int, jpeg_bytes: bytes, width: int | None = None, height: int | None = None) -> bytes:
@@ -157,7 +160,16 @@ def video_frames(path: Path, start_s: float = 0.0, stride: int = 1):
             capture.release()
 
 
-def harness_frames(frame_url: str, timeout_s: float = 2.0):
+def harness_frames(
+    frame_url: str,
+    timeout_s: float = 2.0,
+    *,
+    min_width: int = 640,
+    min_height: int = 480,
+    min_mean_luma: float = 8.0,
+    min_luma_stddev: float = 3.0,
+    on_skip: Callable[..., None] | None = None,
+):
     import cv2
     import httpx
     import numpy as np
@@ -177,7 +189,51 @@ def harness_frames(frame_url: str, timeout_s: float = 2.0):
             frame = cv2.imdecode(data, cv2.IMREAD_COLOR)
             if frame is None:
                 raise ValueError(f"harness returned undecodable JPEG from {frame_url}")
+            skip_reason = harness_frame_skip_reason(
+                frame,
+                min_width=min_width,
+                min_height=min_height,
+                min_mean_luma=min_mean_luma,
+                min_luma_stddev=min_luma_stddev,
+            )
+            if skip_reason:
+                if on_skip is not None:
+                    height, width = frame.shape[:2]
+                    mean_luma, luma_stddev = _frame_luma_stats(frame)
+                    on_skip(
+                        reason=skip_reason,
+                        width=width,
+                        height=height,
+                        mean_luma=round(mean_luma, 3),
+                        luma_stddev=round(luma_stddev, 3),
+                    )
+                time.sleep(0.05)
+                continue
             yield frame
+
+
+def harness_frame_skip_reason(
+    frame,
+    *,
+    min_width: int = 640,
+    min_height: int = 480,
+    min_mean_luma: float = 8.0,
+    min_luma_stddev: float = 3.0,
+) -> str | None:
+    height, width = frame.shape[:2]
+    if width < min_width or height < min_height:
+        return "too_small"
+    mean_luma, luma_stddev = _frame_luma_stats(frame)
+    if mean_luma < min_mean_luma and luma_stddev < min_luma_stddev:
+        return "too_dark"
+    return None
+
+
+def _frame_luma_stats(frame) -> tuple[float, float]:
+    import cv2
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(gray.mean()), float(gray.std())
 
 
 def tello_frames():
