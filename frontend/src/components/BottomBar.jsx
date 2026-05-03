@@ -1,4 +1,5 @@
 import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
+import { PHASE } from '../contexts/MissionPhaseContext'
 
 function Separator() {
   return (
@@ -77,7 +78,7 @@ function wsHealthLabel(connectionState) {
   }
 }
 
-export default function BottomBar() {
+export default function BottomBar({ phase }) {
   const { data: telemetry, connectionState } = useWebSocket('drone.telemetry')
   const { data: detectionsData } = useWebSocket('drone.detections')
 
@@ -131,20 +132,22 @@ export default function BottomBar() {
         />
       </div>
 
-      {/* Right: 3D toggle placeholder */}
-      <button
-        type="button"
-        disabled
-        className="flex items-center gap-1.5 px-2 py-0.5 rounded border opacity-40 cursor-not-allowed"
-        title="3D view coming soon"
-        style={{
-          borderColor: 'var(--color-border-default)',
-          background: 'transparent',
-          color: 'var(--color-text-secondary)',
-        }}
-      >
-        <span className="font-mono text-[11px] font-medium">[3D]</span>
-      </button>
+      {/* Right: 3D toggle — hidden in POST_FLIGHT (3D already primary) and PRE_FLIGHT */}
+      {phase === PHASE.ACTIVE && (
+        <button
+          type="button"
+          disabled
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded border opacity-40 cursor-not-allowed"
+          title="3D view coming soon"
+          style={{
+            borderColor: 'var(--color-border-default)',
+            background: 'transparent',
+            color: 'var(--color-text-secondary)',
+          }}
+        >
+          <span className="font-mono text-[11px] font-medium">[3D]</span>
+        </button>
+      )}
     </footer>
   )
 }
