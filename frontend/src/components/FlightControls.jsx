@@ -13,7 +13,7 @@ async function postCommand(type) {
   return res.json()
 }
 
-function HoldButton({ label, className, disabled, onActivate, holdProgress }) {
+function HoldButton({ label, className, disabled, onActivate }) {
   const timerRef = useRef(null)
   const startRef = useRef(null)
   const rafRef = useRef(null)

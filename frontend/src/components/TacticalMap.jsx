@@ -47,7 +47,7 @@ function drawGrid(ctx, w, h) {
   }
 }
 
-function drawLegend(ctx, w, h) {
+function drawLegend(ctx, h) {
   const PAD = 8
   const DOT_R = 4
   const LINE_H = 16
@@ -251,7 +251,7 @@ export default function TacticalMap() {
     }
 
     // Overlay elements — drawn last so they're always on top
-    drawLegend(ctx, w, h)
+    drawLegend(ctx, h)
     drawCompass(ctx, w)
   }, [])
 
