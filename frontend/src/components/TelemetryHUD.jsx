@@ -1,95 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
+import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
+import { batteryColor, formatFlightTime } from '../lib/telemetry'
 
-const WS_URL = 'ws://127.0.0.1:8000/events'
 const HEALTH_URL = '/api/health'
 const POLL_INTERVAL_MS = 2000
-const RECONNECT_DELAY_MS = 1000
-
-function batteryColor(battery) {
-  if (battery === null || battery === undefined) return '#6b7280'
-  if (battery > 50) return '#22c55e'
-  if (battery >= 20) return '#eab308'
-  return '#ef4444'
-}
-
-function formatFlightTime(seconds) {
-  if (seconds === null || seconds === undefined) return '--:--'
-  const m = Math.floor(seconds / 60).toString().padStart(2, '0')
-  const s = (seconds % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
-}
 
 export default function TelemetryHUD() {
-  const [telemetry, setTelemetry] = useState(null)
-  const [wsConnected, setWsConnected] = useState(false)
-  const wsRef = useRef(null)
+  const { data: wsData, connectionState } = useWebSocket('drone.telemetry')
+  const [polledTelemetry, setPolledTelemetry] = useState(null)
   const pollRef = useRef(null)
-  const reconnectRef = useRef(null)
 
-  function startPolling() {
+  // Fall back to polling when WS is not connected
+  useEffect(() => {
+    if (connectionState === CONNECTION_STATE.CONNECTED) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+      return
+    }
+
     if (pollRef.current) return
+
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(HEALTH_URL)
         if (res.ok) {
           const data = await res.json()
-          if (data.telemetry) setTelemetry(data.telemetry)
+          if (data.telemetry) setPolledTelemetry(data.telemetry)
         }
       } catch {
         // server not yet up, keep trying
       }
     }, POLL_INTERVAL_MS)
-  }
 
-  function stopPolling() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-  }
-
-  function connect() {
-    const ws = new WebSocket(WS_URL)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      setWsConnected(true)
-      stopPolling()
-    }
-
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data)
-        if (msg.topic === 'drone.telemetry' && msg.message) {
-          setTelemetry(msg.message)
-        }
-      } catch {
-        // malformed message, ignore
-      }
-    }
-
-    ws.onclose = () => {
-      setWsConnected(false)
-      startPolling()
-      reconnectRef.current = setTimeout(connect, RECONNECT_DELAY_MS)
-    }
-
-    ws.onerror = () => {
-      ws.close()
-    }
-  }
-
-  useEffect(() => {
-    connect()
     return () => {
-      clearTimeout(reconnectRef.current)
-      stopPolling()
-      if (wsRef.current) {
-        wsRef.current.onclose = null
-        wsRef.current.close()
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
       }
     }
-  }, [])
+  }, [connectionState])
+
+  // Prefer live WS data; fall back to polled
+  const telemetry = wsData ?? polledTelemetry
+
+  const wsConnected = connectionState === CONNECTION_STATE.CONNECTED
 
   const bat = telemetry?.battery ?? null
   const alt = telemetry?.height_cm ?? null
@@ -102,7 +58,7 @@ export default function TelemetryHUD() {
       <div className="telemetry-hud__header">
         <span className="telemetry-hud__title">TELEMETRY HUD</span>
         <span className="telemetry-hud__ws" style={{ color: wsConnected ? '#22c55e' : '#6b7280' }}>
-          {wsConnected ? 'WS' : 'POLL'}
+          {wsConnected ? 'LIVE' : 'DELAYED'}
         </span>
       </div>
 

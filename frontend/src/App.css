@@ -14,13 +14,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  height: 52px;
+  /* height controlled by Tailwind h-12 (48px) in JSX */
   border-bottom: 1px solid var(--border);
   background: rgba(10, 10, 15, 0.95);
   backdrop-filter: blur(12px);
   flex-shrink: 0;
   z-index: 10;
 }
+
 
 .app__header-left {
   display: flex;
@@ -253,10 +254,10 @@
 /* ── Telemetry HUD ───────────────────────────────────────── */
 
 .flight-controls {
-  border: 1px solid rgba(248, 113, 113, 0.28);
-  border-radius: 6px;
-  background: rgba(127, 29, 29, 0.18);
-  backdrop-filter: blur(8px);
+  /* Border/bg/blur handled by parent .glass-panel wrapper */
+  border: 1px solid rgba(248, 113, 113, 0.20);
+  border-radius: 0;
+  background: rgba(127, 29, 29, 0.12);
   overflow: hidden;
 }
 
@@ -423,12 +424,9 @@
 /* ── Tactical Map ────────────────────────────────────────── */
 
 .tactical-map {
-  flex: 1;
+  height: 100%;
   min-height: 200px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(8px);
+  /* Border/bg/blur handled by parent .glass-panel wrapper */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -459,12 +457,8 @@
 }
 
 .map3d {
-  flex: 1;
-  min-height: 300px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(8px);
+  height: 100%;
+  min-height: 220px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -515,6 +509,23 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* ── Glassmorphism ───────────────────────────────────────── */
+
+.glass-panel {
+  background: rgb(15 23 42 / 0.95);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .glass-panel {
+    background: rgb(15 23 42 / 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
 }
 
 .map3d__depth {

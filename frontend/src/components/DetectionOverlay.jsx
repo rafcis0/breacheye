@@ -1,9 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-
-// NOTE: This component creates its own WebSocket connection to /events.
-// When TelemetryHUD (PR #33) is merged, consolidate both into a shared
-// useWebSocket hook to avoid duplicate connections.
-const WS_URL = 'ws://127.0.0.1:8000/events'
+import { useWebSocket } from '../contexts/WebSocketContext'
 
 // Source resolution for coordinate scaling
 const SRC_W = 960
@@ -48,9 +44,7 @@ export default function DetectionOverlay({ containerRef }) {
   const ctxRef = useRef(null)
   const detectionsRef = useRef([])
   const rafRef = useRef(null)
-  const wsRef = useRef(null)
-  const backoffRef = useRef(1000)
-  const reconnectRef = useRef(null)
+  const { data } = useWebSocket('drone.detections')
 
   const drawFrame = useCallback(() => {
     const canvas = canvasRef.current
@@ -175,61 +169,25 @@ export default function DetectionOverlay({ containerRef }) {
     return () => ro.disconnect()
   }, [containerRef])
 
-  // WebSocket subscription
+  // Handle incoming detections from shared WebSocket context
   useEffect(() => {
-    let ws
+    const msg = data
+    if (!Array.isArray(msg?.detections)) return
 
-    function connect() {
-      ws = new WebSocket(WS_URL)
-      wsRef.current = ws
+    const now = Date.now()
+    const incoming = msg.detections.map((detection) => ({
+      detection,
+      arrivedAt: now,
+    }))
 
-      ws.onopen = () => {
-        backoffRef.current = 1000
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const envelope = JSON.parse(event.data)
-          if (envelope.topic !== 'drone.detections') return
-          const msg = envelope.message
-          if (!Array.isArray(msg?.detections)) return
-
-          const now = Date.now()
-          const incoming = msg.detections.map((detection) => ({
-            detection,
-            arrivedAt: now,
-          }))
-
-          // Refresh timestamps for existing IDs; append new ones
-          detectionsRef.current = [
-            ...detectionsRef.current.filter(
-              (e) => !incoming.some((n) => n.detection.id === e.detection.id)
-            ),
-            ...incoming,
-          ]
-        } catch {
-          // Malformed frame — skip
-        }
-      }
-
-      ws.onclose = () => {
-        reconnectRef.current = setTimeout(connect, backoffRef.current)
-        backoffRef.current = Math.min(backoffRef.current * 2, 30000)
-      }
-
-      ws.onerror = () => {}
-    }
-
-    connect()
-
-    return () => {
-      clearTimeout(reconnectRef.current)
-      if (wsRef.current) {
-        wsRef.current.onclose = null
-        wsRef.current.close()
-      }
-    }
-  }, [])
+    // Refresh timestamps for existing IDs; append new ones
+    detectionsRef.current = [
+      ...detectionsRef.current.filter(
+        (e) => !incoming.some((n) => n.detection.id === e.detection.id)
+      ),
+      ...incoming,
+    ]
+  }, [data])
 
   // Animation loop
   useEffect(() => {
