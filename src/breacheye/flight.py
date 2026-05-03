@@ -281,7 +281,7 @@ def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
     response = httpx.post(
         f"{base_url}/commands",
         json=command,
-        timeout=5.0,
+        timeout=_command_timeout_s(command),
     )
     response.raise_for_status()
     print(f"[flight] {label} response: {response.text}", flush=True)
@@ -293,6 +293,13 @@ def _post_command_checked(base_url: str, command: dict, *, label: str) -> dict:
             reason = f"{reason}; harness health: {health}"
         raise RuntimeError(f"{label} failed: {reason}")
     return payload
+
+
+def _command_timeout_s(command: dict) -> float:
+    command_type = command.get("type")
+    if command_type in {"takeoff", "land", "emergency"}:
+        return 30.0
+    return 5.0
 
 
 def _harness_health_summary(base_url: str) -> str | None:

@@ -5,7 +5,7 @@ import asyncio
 
 import uvicorn
 
-from breacheye.models import CommandType, DroneCommand, RCControlPayload
+from breacheye.models import CommandStatus, CommandType, DroneCommand, RCControlPayload
 from breacheye.planner import scripted_room_scan
 from breacheye.service import HarnessRuntime, create_app
 
@@ -90,7 +90,7 @@ def main() -> None:
         app = create_app(mode=args.mode)
         uvicorn.run(app, host=args.host, port=args.port)
     elif args.command == "smoke":
-        asyncio.run(_smoke(args.mode))
+        raise SystemExit(asyncio.run(_smoke(args.mode)))
     elif args.command == "offline":
         _offline(args.offline_command, log_dir=args.log_dir, run_id=args.run_id)
     elif args.command == "rafa":
@@ -131,12 +131,22 @@ def main() -> None:
         ))
 
 
-async def _smoke(mode: str) -> None:
+async def _smoke(mode: str) -> int:
     runtime = HarnessRuntime(mode)
     await runtime.start()
     try:
+        telemetry = await runtime.safety.telemetry()
+        print({"event": "preflight_telemetry", "telemetry": telemetry.model_dump()})
+
+        takeoff = DroneCommand(type=CommandType.TAKEOFF, issued_by="smoke")
+        result = await runtime.safety.execute(takeoff)
+        print(result.model_dump())
+        if result.status != CommandStatus.EXECUTED:
+            telemetry = await runtime.safety.telemetry()
+            print({"event": "takeoff_failed_telemetry", "telemetry": telemetry.model_dump()})
+            return 1
+
         for command in [
-            DroneCommand(type=CommandType.TAKEOFF, issued_by="smoke"),
             DroneCommand(
                 type=CommandType.RC_CONTROL,
                 issued_by="smoke",
@@ -148,6 +158,11 @@ async def _smoke(mode: str) -> None:
         ]:
             result = await runtime.safety.execute(command)
             print(result.model_dump())
+            if result.status != CommandStatus.EXECUTED:
+                telemetry = await runtime.safety.telemetry()
+                print({"event": "command_failed_telemetry", "telemetry": telemetry.model_dump()})
+                return 1
+        return 0
     finally:
         await runtime.stop()
 

@@ -1,6 +1,7 @@
 from breacheye.flight import (
     FlightLaunchConfig,
     _apply_local_model_defaults,
+    _command_timeout_s,
     _harness_health_summary,
     _post_command_checked,
     _post_shutdown_land,
@@ -122,7 +123,7 @@ def test_auto_takeoff_posts_bounded_climb_pulses_after_flying(monkeypatch) -> No
 
     _post_takeoff("http://harness", climb_cm=100)
 
-    assert calls[0] == ("post", "http://harness/commands", {"type": "takeoff", "issued_by": "flight_launcher"}, 5.0)
+    assert calls[0] == ("post", "http://harness/commands", {"type": "takeoff", "issued_by": "flight_launcher"}, 30.0)
     assert calls[1] == ("get", "http://harness/health", 1.0)
     climb_pulses = calls[2:]
     assert len(climb_pulses) == 4
@@ -147,6 +148,12 @@ def test_post_command_checked_raises_on_failed_body(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="no lift; harness health: battery=42"):
         _post_command_checked("http://harness", {"type": "takeoff"}, label="takeoff")
+
+
+def test_launch_commands_get_longer_http_timeout() -> None:
+    assert _command_timeout_s({"type": "takeoff"}) == 30.0
+    assert _command_timeout_s({"type": "land"}) == 30.0
+    assert _command_timeout_s({"type": "rc_control"}) == 5.0
 
 
 def test_harness_health_summary_includes_takeoff_diagnostics(monkeypatch) -> None:
