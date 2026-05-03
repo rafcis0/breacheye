@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +24,7 @@ from breacheye.video import FrameStore, TelloVideoPump
 log = logging.getLogger(__name__)
 
 _ZMQ_DETECTIONS_PORT = 5556
+_MAX_POINT_CLOUD_BYTES = 8_000_000
 
 
 class HarnessRuntime:
@@ -204,6 +207,13 @@ def create_app(mode: str = "sim") -> FastAPI:
             raise HTTPException(status_code=404, detail="no sampled frame is available")
         return Response(frame, media_type="image/jpeg")
 
+    @app.get("/map/point-cloud/latest")
+    async def latest_point_cloud():
+        path = _latest_point_cloud_path()
+        if path is None:
+            raise HTTPException(status_code=404, detail="no 3D point cloud artifact is available")
+        return Response(path.read_bytes(), media_type="application/json")
+
     @app.get("/video.mjpeg")
     async def mjpeg_video():
         return StreamingResponse(
@@ -248,6 +258,28 @@ def create_app(mode: str = "sim") -> FastAPI:
                 await runtime.bus.unsubscribe(topic, queue)
 
     return app
+
+
+def _latest_point_cloud_path() -> Path | None:
+    log_dir = Path(os.environ.get("BREACHEYE_LOG_DIR", "logs")).expanduser()
+    run_id = os.environ.get("BREACHEYE_RUN_ID")
+    candidates: list[Path] = []
+    if run_id:
+        candidates.extend(
+            [
+                log_dir / run_id / "map" / "point-cloud.json",
+                log_dir / run_id / "map" / "vggt-point-cloud.json",
+                log_dir / run_id / "map" / "relative-depth-point-cloud.json",
+            ]
+        )
+    candidates.extend(log_dir.glob("*/map/point-cloud.json"))
+    candidates.extend(log_dir.glob("*/map/vggt-point-cloud.json"))
+    candidates.extend(log_dir.glob("*/map/relative-depth-point-cloud.json"))
+
+    existing = [path for path in candidates if path.exists() and path.stat().st_size <= _MAX_POINT_CLOUD_BYTES]
+    if not existing:
+        return None
+    return max(existing, key=lambda path: path.stat().st_mtime)
 
 
 async def _mjpeg_generator(frame_store: FrameStore):

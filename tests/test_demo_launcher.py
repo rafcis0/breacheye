@@ -77,3 +77,10 @@ def test_nav_interpreter_in_all_modes():
         specs = build_demo_specs(mode)
         names = [s.name for s in specs]
         assert "nav_interpreter" in names, f"nav_interpreter missing in {mode} mode"
+
+
+def test_map_builder_in_all_modes_with_run_id():
+    for mode in ("live", "recorded", "mock"):
+        specs = build_demo_specs(mode, run_id="run-1")
+        names = [s.name for s in specs]
+        assert "map_builder" in names, f"map_builder missing in {mode} mode"

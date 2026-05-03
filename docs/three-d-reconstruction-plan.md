@@ -92,10 +92,33 @@ Outputs:
 
 ```text
 logs/<run_id>/map/relative-depth-point-cloud.ply
+logs/<run_id>/map/point-cloud.json
 logs/<run_id>/map/relative-depth-summary.json
 ```
 
-This is not metric reconstruction. It stacks relative monocular depth slices into a rough point cloud so we can see whether the depth stream is stable enough to justify heavier SLAM/SfM work.
+`point-cloud.json` is served by the harness at `/map/point-cloud/latest` and rendered by the frontend 3D panel. This is not metric reconstruction. It stacks relative monocular depth slices into a rough point cloud so we can see whether the depth stream is stable enough to justify heavier SLAM/SfM work.
+
+VGGT-MPS checkpoint path once `~/Downloads/model.pt` finishes:
+
+```bash
+python ai/vggt_log_map.py \
+  --run-id "$BREACHEYE_RUN_ID" \
+  --log-dir logs \
+  --vggt-root vggt-mps \
+  --checkpoint ~/Downloads/model.pt \
+  --max-frames 12 \
+  --stride 2
+```
+
+This writes:
+
+```text
+logs/<run_id>/map/vggt-point-cloud.json
+logs/<run_id>/map/point-cloud.json
+logs/<run_id>/map/vggt-summary.json
+```
+
+The live frontend polls `/map/point-cloud/latest`, so the 3D render updates automatically when either the relative-depth mapper or VGGT-MPS writes a new artifact.
 
 ## Reconstruction Workspace
 

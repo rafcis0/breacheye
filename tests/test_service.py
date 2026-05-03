@@ -35,3 +35,28 @@ def test_latest_frame_returns_404_without_video() -> None:
         response = client.get("/frame/latest")
 
     assert response.status_code == 404
+
+
+def test_latest_point_cloud_returns_404_without_artifact(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("BREACHEYE_LOG_DIR", str(tmp_path))
+    monkeypatch.delenv("BREACHEYE_RUN_ID", raising=False)
+
+    with TestClient(create_app(mode="sim")) as client:
+        response = client.get("/map/point-cloud/latest")
+
+    assert response.status_code == 404
+
+
+def test_latest_point_cloud_returns_run_artifact(monkeypatch, tmp_path) -> None:
+    run_id = "map-test"
+    out = tmp_path / run_id / "map"
+    out.mkdir(parents=True)
+    (out / "point-cloud.json").write_text('{"points":[]}', encoding="utf-8")
+    monkeypatch.setenv("BREACHEYE_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("BREACHEYE_RUN_ID", run_id)
+
+    with TestClient(create_app(mode="sim")) as client:
+        response = client.get("/map/point-cloud/latest")
+
+    assert response.status_code == 200
+    assert response.json() == {"points": []}

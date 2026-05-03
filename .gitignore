@@ -4,6 +4,7 @@
 
 # Research reference material (local only, not committed)
 research/
+vggt-mps/
 
 # Python/test caches
 __pycache__/

@@ -39,4 +39,6 @@ def test_depth_log_map_cli_writes_ply_and_summary(tmp_path, monkeypatch, capsys)
     output = json.loads(capsys.readouterr().out)
     assert output["points"] == 4
     assert (tmp_path / "logs" / "map-test" / "map" / "relative-depth-point-cloud.ply").exists()
+    assert (tmp_path / "logs" / "map-test" / "map" / "relative-depth-point-cloud.json").exists()
+    assert (tmp_path / "logs" / "map-test" / "map" / "point-cloud.json").exists()
     assert (tmp_path / "logs" / "map-test" / "map" / "relative-depth-summary.json").exists()

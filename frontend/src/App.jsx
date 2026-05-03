@@ -4,6 +4,7 @@ import DetectionOverlay from './components/DetectionOverlay'
 import FlightControls from './components/FlightControls'
 import TelemetryHUD from './components/TelemetryHUD'
 import TacticalMap from './components/TacticalMap'
+import Map3D from './components/Map3D'
 import './App.css'
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
           <FlightControls />
           <TelemetryHUD />
           <TacticalMap />
+          <Map3D />
         </aside>
       </main>
     </div>

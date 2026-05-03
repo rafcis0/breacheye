@@ -458,6 +458,58 @@
   cursor: crosshair;
 }
 
+.map3d {
+  flex: 1;
+  min-height: 220px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.map3d__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.map3d__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #2dd4bf;
+  white-space: nowrap;
+}
+
+.map3d__status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.map3d__viewport {
+  flex: 1;
+  min-height: 0;
+}
+
+.map3d__viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* ── Responsive: 1920×1080 primary target ───────────────── */
 
 @media (min-width: 1600px) {

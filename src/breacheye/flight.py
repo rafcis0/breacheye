@@ -93,6 +93,16 @@ def build_process_specs(config: FlightLaunchConfig) -> list[ProcessSpec]:
                 *(_run_id_args(config.run_id)),
             ],
         ),
+        ProcessSpec(
+            "map_builder",
+            [
+                sys.executable,
+                str(_repo_root() / "integration" / "map_builder.py"),
+                "--log-dir",
+                config.log_dir,
+                *(_run_id_args(config.run_id)),
+            ],
+        ),
     ]
     return specs
 
@@ -410,6 +420,12 @@ def build_demo_specs(
         [sys.executable, "-m", "breacheye.cli", "nav",
          "--command-url", f"{base_url}/commands", "--log-dir", log_dir, *_run_id_args(run_id)],
     ))
+    if run_id:
+        specs.append(ProcessSpec(
+            "map_builder",
+            [sys.executable, str(root / "integration" / "map_builder.py"),
+             "--log-dir", log_dir, *_run_id_args(run_id)],
+        ))
 
     return specs
 

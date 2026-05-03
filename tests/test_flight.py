@@ -21,6 +21,7 @@ def test_tello_flight_defaults_to_harness_frame_source() -> None:
     assert "--harness-url" in by_name["frame_publisher"]
     assert "http://127.0.0.1:8000/frame/latest" in by_name["frame_publisher"]
     assert "http://127.0.0.1:8000/commands" in by_name["nav_interpreter"]
+    assert "--run-id" in by_name["map_builder"]
 
 
 def test_sim_flight_defaults_to_synthetic_frames() -> None:

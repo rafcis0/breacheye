@@ -23,14 +23,18 @@ def main() -> None:
 
     points, stats = build_point_cloud(depth_dir=depth_dir, stride=args.stride, max_frames=args.max_frames)
     ply_path = output_dir / "relative-depth-point-cloud.ply"
+    json_path = output_dir / "relative-depth-point-cloud.json"
     preview_path = output_dir / "relative-depth-topdown.png"
     summary_path = output_dir / "relative-depth-summary.json"
     write_ply(ply_path, points)
+    write_point_cloud_json(json_path, points, source="depth_anything_relative")
+    write_point_cloud_json(output_dir / "point-cloud.json", points, source="depth_anything_relative")
     write_topdown_png(preview_path, points)
     summary = {
         "run_id": args.run_id,
         "depth_dir": str(depth_dir),
         "output": str(ply_path),
+        "json": str(json_path),
         "preview": str(preview_path),
         "stride": args.stride,
         "max_frames": args.max_frames,
@@ -97,6 +101,28 @@ def write_ply(path: Path, points: np.ndarray) -> None:
         handle.write("end_header\n")
         for x, y, z, intensity in points:
             handle.write(f"{x:.6f} {y:.6f} {z:.6f} {intensity:.6f}\n")
+
+
+def write_point_cloud_json(path: Path, points: np.ndarray, source: str) -> None:
+    max_points = 6000
+    sampled = points
+    if sampled.shape[0] > max_points:
+        indices = np.linspace(0, sampled.shape[0] - 1, max_points).astype(np.int64)
+        sampled = sampled[indices]
+    payload = {
+        "type": "point_cloud",
+        "source": source,
+        "points": [
+            {
+                "x": float(x),
+                "y": float(y),
+                "z": float(z),
+                "intensity": float(intensity),
+            }
+            for x, y, z, intensity in sampled
+        ],
+    }
+    path.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
 
 
 def write_topdown_png(path: Path, points: np.ndarray, size: int = 900) -> None:
