@@ -458,6 +458,8 @@
 
 .tactical-map__canvas {
   flex: 1;
+  min-height: 0;
+  height: 0;
   display: block;
   width: 100%;
 }
@@ -620,3 +622,15 @@
     min-height: 160px;
   }
 }
+
+.demo-room { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.demo-room__scene { width: 100%; height: 100%; }
+.demo-room__scene canvas { display: block; }
+.demo-room__tag { position: absolute; top: 18px; left: 18px; background: #101b22d9; padding: 8px 12px; color: #a3e9dc; font: 11px var(--font-mono); letter-spacing: .1em; }
+.demo-room__reticle { position: absolute; top: 44%; left: 50%; color: #d2fff4; font: 32px monospace; font-weight: 200; }
+.demo-room__box { position: absolute; left: 53%; top: 51%; width: 40%; height: 30%; border: 1px solid #6ae2cf; }
+.demo-room__box span { position: absolute; top: -25px; left: -1px; white-space: nowrap; background: #11312ded; color: #aaf9eb; padding: 5px 8px; font: 10px var(--font-mono); }
+.demo-room__decision { position: absolute; bottom: 18px; left: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; background: #09151eea; border-left: 3px solid #6ae2cf; padding: 16px; }
+.demo-room__decision span { color: #7fd5c7; font: 10px var(--font-mono); letter-spacing: .12em; }
+.demo-room__decision strong { color: #f1f5f9; font: 16px var(--font-mono); }
+.demo-room__decision small { color: #93a5b6; font: 11px var(--font-mono); }

@@ -9,6 +9,7 @@ import FlightControls from './components/FlightControls'
 import TacticalMap from './components/TacticalMap'
 import Map3D from './components/Map3D'
 import './App.css'
+import { DEMO_MODE } from './lib/demo'
 
 function PreFlightStatus() {
   return (
@@ -117,7 +118,7 @@ function AppLayout() {
           ) : (
             <div className="video-overlay-container h-full">
               <VideoPanel frameRef={videoFrameRef} />
-              <DetectionOverlay containerRef={videoFrameRef} />
+              {!DEMO_MODE && <DetectionOverlay containerRef={videoFrameRef} />}
             </div>
           )}
         </section>

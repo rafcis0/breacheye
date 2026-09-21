@@ -22,6 +22,7 @@ hardware = [
     "opencv-python>=4.9",
 ]
 test = [
+    "pillow>=10",
     "httpx>=0.27",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

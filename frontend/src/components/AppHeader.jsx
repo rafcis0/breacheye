@@ -2,6 +2,8 @@ import { useWebSocket, CONNECTION_STATE } from '../contexts/WebSocketContext'
 import { useMissionPhase, PHASE } from '../contexts/MissionPhaseContext'
 import { batteryColor, formatFlightTime } from '../lib/telemetry'
 
+import { DEMO_MODE } from '../lib/demo'
+
 function TelemetryChip({ label, value, valueStyle }) {
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-white/10 bg-white/5">
@@ -115,7 +117,7 @@ export default function AppHeader() {
             letterSpacing: '0.05em',
           }}
         >
-          Autonomous Indoor Mapping · NatSec 2026
+          {DEMO_MODE ? 'SIMULATION · DEMO ONLY' : 'Autonomous Indoor Mapping · NatSec 2026'}
         </span>
       </div>
 

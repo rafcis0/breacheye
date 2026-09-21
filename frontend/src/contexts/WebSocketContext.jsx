@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 
-const WS_URL = 'ws://127.0.0.1:8000/events'
+import { DEMO_MODE, startDemo } from '../lib/demo'
+
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/events`
 
 // Connection states
 export const CONNECTION_STATE = {
@@ -47,6 +49,13 @@ export function WebSocketProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    if (DEMO_MODE) {
+      setConnectionState(CONNECTION_STATE.CONNECTED)
+      return startDemo((topic, message) => {
+        latestRef.current.set(topic, message)
+        for (const callback of listenersRef.current.get(topic) ?? []) callback(message)
+      })
+    }
     function connect() {
       try {
         const ws = new WebSocket(WS_URL)
