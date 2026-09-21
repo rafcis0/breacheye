@@ -22,8 +22,15 @@ weights/
 *.mlpackage/
 *.mp4
 *.mov
+# Small, curated portfolio demo; other recordings remain local.
+!demo/assets/breacheye-demo.mp4
 
 # Runtime logs and local benchmark artifacts
 logs/
 demo/benchmarks/
 demo/generated/
+
+# Generated package metadata and local environments
+*.egg-info/
+.venv/
+.DS_Store

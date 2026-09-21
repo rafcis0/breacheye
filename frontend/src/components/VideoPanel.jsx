@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useWebSocket } from '../contexts/WebSocketContext'
 
+import { DEMO_MODE } from '../lib/demo'
+import DemoRoom from './DemoRoom'
+
 const MJPEG_URL = '/api/video.mjpeg'
 
 export default function VideoPanel({ frameRef }) {
@@ -40,13 +43,13 @@ export default function VideoPanel({ frameRef }) {
   return (
     <div className="video-panel">
       <div className="video-panel__header">
-        <span className="video-panel__title">LIVE FEED</span>
+        <span className="video-panel__title">{DEMO_MODE ? 'SIMULATED DRONE VIEW' : 'LIVE FEED'}</span>
         <div className="video-panel__status">
           <span
             className={`video-panel__dot ${hasSignal ? 'video-panel__dot--live' : 'video-panel__dot--dead'}`}
           />
           <span className="video-panel__status-text">
-            {hasSignal ? 'SIGNAL ACTIVE' : 'NO SIGNAL'}
+            {DEMO_MODE ? 'DEMO · SYNTHETIC' : hasSignal ? 'SIGNAL ACTIVE' : 'NO SIGNAL'}
           </span>
           <span
             style={{
@@ -63,7 +66,7 @@ export default function VideoPanel({ frameRef }) {
       </div>
 
       <div className="video-panel__frame" ref={frameRef}>
-        {hasSignal ? (
+        {DEMO_MODE ? <DemoRoom /> : hasSignal ? (
           <img
             src={MJPEG_URL}
             alt="Drone MJPEG feed"
@@ -88,7 +91,7 @@ export default function VideoPanel({ frameRef }) {
       </div>
 
       <div className="video-panel__footer">
-        <span className="video-panel__meta">DJI TELLO · 960×720 · 30 FPS</span>
+        <span className="video-panel__meta">{DEMO_MODE ? 'ILLUSTRATIVE ROOM · NOT ONBOARD FOOTAGE' : 'DJI TELLO · 960×720 · 30 FPS'}</span>
         <span className="video-panel__source">960×720 · 30 FPS</span>
       </div>
     </div>

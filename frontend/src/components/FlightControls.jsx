@@ -1,9 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
 
+import { DEMO_MODE } from '../lib/demo'
+
 const COMMAND_URL = '/api/commands'
 const HOLD_MS = 500
 
 async function postCommand(type) {
+  if (DEMO_MODE) return { status: 'simulated', type }
   const res = await fetch(COMMAND_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -103,7 +106,7 @@ export default function FlightControls() {
     setLandBusy(true)
     try {
       await postCommand('land')
-      showBanner('LAND COMMAND SENT — drone descending', 'var(--color-accent-warning)')
+      showBanner(DEMO_MODE ? 'SIMULATION — no command sent' : 'LAND COMMAND SENT — drone descending', 'var(--color-accent-warning)')
     } catch {
       showBanner('LAND FAILED', 'var(--color-accent-danger)')
     } finally {
@@ -115,7 +118,7 @@ export default function FlightControls() {
     setEmergencyBusy(true)
     try {
       await postCommand('emergency')
-      showBanner('EMERGENCY STOP — motors killed', 'var(--color-accent-danger)')
+      showBanner(DEMO_MODE ? 'SIMULATION — no command sent' : 'EMERGENCY STOP — motors killed', 'var(--color-accent-danger)')
     } catch {
       showBanner('EMERGENCY FAILED', 'var(--color-accent-danger)')
     } finally {

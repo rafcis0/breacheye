@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { DEMO_MODE, demoCloud } from '../lib/demo'
+
 const API_URL = '/api/map/point-cloud/latest'
 const DEPTH_URL = '/api/map/depth/latest'
 const MAX_POINTS = 12000
@@ -150,9 +152,9 @@ export default function Map3D() {
 
     async function loadCloud() {
       try {
-        const response = await fetch(API_URL, { cache: 'no-store' })
-        if (!response.ok) throw new Error(`status ${response.status}`)
-        const cloud = await response.json()
+        const response = DEMO_MODE ? null : await fetch(API_URL, { cache: 'no-store' })
+        if (response && !response.ok) throw new Error(`status ${response.status}`)
+        const cloud = DEMO_MODE ? demoCloud() : await response.json()
         if (cancelled || !pointsRef.current || !threeRef.current) return
         const next = cloudToGeometry(threeRef.current, cloud)
         const prev = pointsRef.current.geometry
@@ -160,7 +162,7 @@ export default function Map3D() {
         prev.dispose()
         if (labelRef.current) {
           const count = cloud.points?.length ?? 0
-          labelRef.current.textContent = `3D RECON · ${count.toLocaleString()} pts`
+          labelRef.current.textContent = `${DEMO_MODE ? 'SIMULATED' : '3D RECON'} · ${count.toLocaleString()} pts`
         }
       } catch {
         if (labelRef.current) {
@@ -170,10 +172,12 @@ export default function Map3D() {
     }
 
     loadCloud()
+    if (DEMO_MODE) window.addEventListener('breacheye:demo-time', loadCloud)
     const timer = setInterval(loadCloud, 3000)
     return () => {
       cancelled = true
       clearInterval(timer)
+      if (DEMO_MODE) window.removeEventListener('breacheye:demo-time', loadCloud)
     }
   }, [])
 
@@ -181,6 +185,7 @@ export default function Map3D() {
     let cancelled = false
 
     async function loadDepth() {
+      if (DEMO_MODE) { setDepthStatus("SIMULATED GEOMETRY · NOT MEASURED DEPTH"); return }
       try {
         const src = `${DEPTH_URL}?t=${Date.now()}`
         const response = await fetch(src, { cache: 'no-store' })

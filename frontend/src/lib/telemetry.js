@@ -11,7 +11,8 @@ export function batteryColor(level) {
 }
 
 export function formatFlightTime(seconds) {
-  if (seconds === null || seconds === undefined) return '--:--'
+  if (!Number.isFinite(seconds) || seconds < 0) return '--:--'
+  seconds = Math.floor(seconds)
   const m = Math.floor(seconds / 60).toString().padStart(2, '0')
   const s = (seconds % 60).toString().padStart(2, '0')
   return `${m}:${s}`
