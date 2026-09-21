@@ -4,9 +4,11 @@
 
 BreachEye explores how a small drone can interpret an unfamiliar room and turn visual observations into bounded movement. It combines Qwen3-VL navigation, Depth Anything V2 relative depth, a DJI Tello control harness, and a browser interface for inspecting the flight. Model inference runs on a local Apple Silicon Mac.
 
-[Watch the demo](https://github.com/rafcis0/breacheye/raw/refs/heads/main/demo/assets/breacheye-demo.mp4) · [Try it locally](#try-it-locally) · [Architecture](#how-it-works) · [Documentation](docs/README.md)
+[Watch the demo](#demo) · [Try it locally](#try-it-locally) · [Architecture](#how-it-works) · [Documentation](docs/README.md)
 
-[![Recorded Tello flight beside the BreachEye frontend simulation](demo/assets/breacheye-demo.jpg)](https://github.com/rafcis0/breacheye/raw/refs/heads/main/demo/assets/breacheye-demo.mp4)
+## Demo
+
+https://github.com/user-attachments/assets/36205d88-a732-44db-998c-558615afae3b
 
 *14-second demo with original audio. Left: recorded Tello flight. Right: the actual frontend running a scripted camera, telemetry, and mapping simulation. The panels illustrate the intended interaction; they are not a synchronized inference replay.*
 
